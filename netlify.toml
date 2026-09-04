@@ -1,0 +1,17 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# 스케줄 함수 (KST를 UTC로 환산)
+[functions."daily-brief"]
+  schedule = "30 23 * * *"   # 매일 08:30 KST — 변경분 반영·지연 목록 Slack 발송
+[functions."monthly-collect"]
+  schedule = "0 0 1 * *"     # 매월 1일 — GWS·GitHub·Slack 권한·자산 덤프
+[functions."ctas-sync"]
+  schedule = "0 * * * *"     # 매시간 — C-TAS 위협정보 수집 (API 회원인 경우)
