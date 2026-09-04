@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { BarChart, Bar as RBar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 /* ─────────────── 영역·활동 데이터 (인증 요구 활동 기준) ─────────────── */
@@ -472,10 +472,69 @@ function EmpTraining() {
   );
 }
 
-/* ─────────────── 캘린더 ─────────────── */
+/* ─────────────── 일정·브리프 ('보안활동' Google Calendar) ─────────────── */
+function useSecurityCalendar() {
+  const [state, setState] = useState({ loading: true, events: [], error: null });
+  useEffect(() => {
+    let alive = true;
+    fetch("/.netlify/functions/calendar")
+      .then((r) => r.json())
+      .then((j) => alive && setState({ loading: false, events: j.events || [], error: j.ok ? null : j.error || "읽기 실패" }))
+      .catch((e) => alive && setState({ loading: false, events: [], error: String(e) }));
+    return () => { alive = false; };
+  }, []);
+  return state;
+}
+// 브리프 본문: "[보안 뉴스]" 같은 대괄호 제목으로 구간을 나누고, "- " 줄을 항목으로 본다
+function parseBrief(desc) {
+  const secs = []; let cur = null;
+  for (const raw of (desc || "").split("\n")) {
+    const line = raw.trim(); if (!line) continue;
+    const h = line.match(/^\[(.+)\]$/);
+    if (h) { cur = { title: h[1], items: [] }; secs.push(cur); continue; }
+    if (!cur) { cur = { title: "", items: [] }; secs.push(cur); }
+    cur.items.push(line.replace(/^[-·•]\s*/, ""));
+  }
+  return secs;
+}
+const fmtDate = (d) => { if (!d) return ""; const [yy, mm, dd] = d.split("-"); const w = ["일", "월", "화", "수", "목", "금", "토"][new Date(+yy, +mm - 1, +dd).getDay()]; return `${+mm}/${+dd}(${w})`; };
+function BriefCard({ brief, briefs, onPick, loading, error }) {
+  const secs = parseBrief(brief?.desc);
+  const isToday = brief?.date === TODAY;
+  return (
+    <div className="bg-white p-4" style={{ border: `1px solid ${C.line}`, borderRadius: 6 }}>
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold">{isToday ? "오늘의 보안 브리프" : "보안 브리프"}</h2>
+        {brief && <Tag color={isToday ? ST.ok[1] : C.mute}>{fmtDate(brief.date)}</Tag>}
+        {!loading && !error && briefs.length > 1 && (
+          <select value={brief?.id || ""} onChange={(e) => onPick(briefs.find((b) => b.id === e.target.value))} className="ml-auto text-xs rounded-sm px-2 py-1" style={{ border: `1px solid ${C.line}` }}>
+            {briefs.map((b) => <option key={b.id} value={b.id}>{fmtDate(b.date)} 브리프</option>)}
+          </select>
+        )}
+      </div>
+      {loading ? <p className="text-xs" style={{ color: C.mute }}>'보안활동' 캘린더를 읽는 중…</p>
+        : error ? <p className="text-xs" style={{ color: ST.gap[1] }}>캘린더를 읽지 못했습니다. ({error})</p>
+        : !brief ? <p className="text-xs" style={{ color: C.mute }}>등록된 브리프가 없습니다. 매일 08:30 모닝 브리프가 '보안활동' 캘린더에 [브리프] 일정으로 등록되면 여기에 표시됩니다.</p>
+        : (
+          <div className="grid grid-cols-3 gap-4">
+            {secs.map((s, i) => (
+              <div key={i}>
+                {s.title && <div className="text-xs font-semibold mb-1.5" style={{ color: C.steel }}>{s.title}</div>}
+                <ul className="text-xs space-y-1" style={{ color: C.ink }}>{s.items.map((t, j) => <li key={j} className="flex gap-1.5"><span style={{ color: C.mute }}>·</span><span>{t}</span></li>)}</ul>
+              </div>
+            ))}
+          </div>
+        )}
+    </div>
+  );
+}
 function Calendar({ go }) {
   const [ym, setYm] = useState([2026, 9]);
   const [filter, setFilter] = useState("ALL");
+  const { loading, events, error } = useSecurityCalendar();
+  const briefs = events.filter((e) => e.brief);
+  const [picked, setPicked] = useState(null);
+  const brief = picked || briefs.find((b) => b.date === TODAY) || briefs[0] || null;
   const [y, m] = ym;
   const first = new Date(y, m - 1, 1).getDay();
   const days = lastDay(y, m);
@@ -483,10 +542,14 @@ function Calendar({ go }) {
   while (cells.length % 7) cells.push(null);
   const inMonth = OCC.filter((o) => o.due.startsWith(`${y}-${pad(m)}`) && (filter === "ALL" || o.act.d === filter));
   const byDay = {}; inMonth.forEach((o) => { const d = +o.due.slice(8); (byDay[d] = byDay[d] || []).push(o); });
+  // Google Calendar 일정(브리프 포함)을 날짜별로
+  const gByDay = {}; events.filter((e) => e.date.startsWith(`${y}-${pad(m)}`)).forEach((e) => { const d = +e.date.slice(8); (gByDay[d] = gByDay[d] || []).push(e); });
   const cnt = (s) => inMonth.filter((o) => o.status === s).length;
   const move = (k) => { let [yy, mm] = ym; mm += k; if (mm < 1) { mm = 12; yy--; } if (mm > 12) { mm = 1; yy++; } setYm([yy, mm]); };
   return (
     <div className="space-y-4">
+      <h1 className="text-xl font-semibold">일정·브리프</h1>
+      <BriefCard brief={brief} briefs={briefs} onPick={setPicked} loading={loading} error={error} />
       <div className="flex items-end justify-between">
         <div className="flex items-center gap-3"><h1 className="text-xl font-semibold">{y}년 {m}월</h1><Btn small onClick={() => move(-1)}>‹</Btn><Btn small onClick={() => move(1)}>›</Btn></div>
         <div className="flex items-center gap-3 text-xs">
@@ -502,6 +565,9 @@ function Calendar({ go }) {
             return (
               <div key={i} className="min-h-24 p-1.5" style={{ borderTop: `1px solid ${C.line}`, borderLeft: i % 7 ? `1px solid ${C.line}` : undefined, background: d ? "#fff" : C.bg }}>
                 {d && <div className="text-xs mb-1 w-5 h-5 flex items-center justify-center rounded-full" style={{ background: today ? C.ink : undefined, color: today ? "#fff" : C.mute }}>{d}</div>}
+                {(gByDay[d] || []).map((e) => (
+                  <button key={e.id} onClick={() => e.brief && setPicked(e)} title={e.title} className="w-full text-left text-xs px-1 py-0.5 mb-0.5 rounded-sm truncate focus:outline-none focus:ring-2" style={{ background: e.brief ? C.steel : C.bg, color: e.brief ? "#fff" : C.ink, border: e.brief ? undefined : `1px solid ${C.line}` }}>{e.brief ? "브리프" : e.title}</button>
+                ))}
                 {(byDay[d] || []).slice(0, 4).map((o) => (
                   <button key={o.act.code + o.period} onClick={() => go(o.act.d)} className="w-full text-left text-xs px-1 py-0.5 mb-0.5 rounded-sm truncate focus:outline-none focus:ring-2" style={{ background: OST[o.status][1] + "1A", color: OST[o.status][1], textDecoration: o.status === "done" ? "line-through" : undefined }}>{o.act.code} {o.act.title}</button>
                 ))}
@@ -511,7 +577,7 @@ function Calendar({ go }) {
           })}
         </div>
       </div>
-      <p className="text-xs" style={{ color: C.mute }}>'보안활동' 전용 Google Calendar와 동기화됩니다. 알림: D-7·D-1 Slack DM, 기한 당일 #security, 지연 건은 매일 아침 묶음 발송.</p>
+      <p className="text-xs" style={{ color: C.mute }}>'보안활동' Google Calendar를 5분 간격으로 읽어옵니다. 모닝 브리프는 매일 08:30 [브리프] 일정으로 등록됩니다. 알림: D-7·D-1 Slack DM, 기한 당일 #security, 지연 건은 매일 아침 묶음 발송.</p>
     </div>
   );
 }
@@ -564,7 +630,7 @@ export default function App() {
   const [page, setPage] = useState("overview");
   const [std, setStd] = useState("ALL");
   const [requests, setRequests] = useState(INIT_REQUESTS);
-  const nav = [["overview", "현황"], ["calendar", "캘린더"], ["inbox", "요청함"], ["claude", "Claude"]];
+  const nav = [["overview", "현황"], ["calendar", "일정·브리프"], ["inbox", "요청함"], ["claude", "Claude"]];
   const open = requests.filter((r) => ["접수", "처리중"].includes(r.status)).length;
   const switchRole = (r) => { setRole(r); setPage(r === "employee" ? "ehome" : "overview"); };
   const isEmp = role === "employee";
