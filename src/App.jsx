@@ -200,17 +200,17 @@ function Overview({ go, std, setStd }) {
   const soon = ACTS.filter((x) => x.next !== "—" && x.next <= "2026-10-15").sort((p, q) => p.next.localeCompare(q.next)).slice(0, 8);
   return (
     <div className="space-y-4">
-      <div className="flex items-end justify-between">
+      <div className="flex flex-wrap items-end justify-between gap-2">
         <h1 className="text-xl font-semibold">보안활동 현황</h1>
-        <div className="flex gap-1">{["ALL", ...STD].map((s) => <button key={s} onClick={() => setStd(s)} className="text-xs px-2.5 py-1 rounded-sm" style={{ background: std === s ? C.ink : "#fff", color: std === s ? "#fff" : C.ink, border: `1px solid ${C.line}` }}>{s === "ALL" ? "전체" : STD_LABEL[s]}</button>)}</div>
+        <div className="flex flex-wrap gap-1">{["ALL", ...STD].map((s) => <button key={s} onClick={() => setStd(s)} className="text-xs px-2.5 py-1 rounded-sm" style={{ background: std === s ? C.ink : "#fff", color: std === s ? "#fff" : C.ink, border: `1px solid ${C.line}` }}>{s === "ALL" ? "전체" : STD_LABEL[s]}</button>)}</div>
       </div>
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[["대상 활동", acts.length, C.ink], ["충족", tot.ok, ST.ok[1]], ["보완 필요", tot.warn, ST.warn[1]], ["미비", tot.gap, ST.gap[1]]].map(([l, v, c]) => (
           <div key={l} className="bg-white px-4 py-3" style={{ border: `1px solid ${C.line}`, borderRadius: 6 }}><div className="text-xs" style={{ color: C.mute }}>{l}</div><div className="text-2xl font-semibold mt-1" style={{ color: c }}>{v}</div></div>
         ))}
       </div>
-      <div className="grid grid-cols-5 gap-4">
-        <div className="col-span-3">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="md:col-span-3">
           <Card title="영역별 이행률">
             <div className="space-y-2.5">
               {DOMAINS.map((d) => {
@@ -227,7 +227,7 @@ function Overview({ go, std, setStd }) {
             </div>
           </Card>
         </div>
-        <div className="col-span-2">
+        <div className="md:col-span-2">
           <Card title="기한 임박 (10/15까지)">
             <ul className="text-sm divide-y" style={{ borderColor: C.line }}>
               {soon.map((x) => <li key={x.code} className="py-2 flex items-center gap-2"><Dot s={x.status} /><span className="text-xs w-8" style={{ color: C.mute }}>{x.code}</span><span className="truncate">{x.title}</span><span className="ml-auto text-xs shrink-0" style={{ color: x.next <= "2026-09-30" ? ST.gap[1] : C.mute }}>{x.next.slice(5)}</span></li>)}
@@ -236,8 +236,8 @@ function Overview({ go, std, setStd }) {
         </div>
       </div>
       <Card title="KISA C-TAS 위협정보" right={<span className="text-xs" style={{ color: C.mute }}>{CTAS.via} 동기화 {CTAS.lastSync} · 사내 전용</span>}>
-        <div className="grid grid-cols-5 gap-4">
-          <div className="col-span-3">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="md:col-span-3">
             <div className="text-xs mb-1" style={{ color: C.mute }}>최근 14일 수신 IOC</div>
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={CTAS.daily} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
@@ -252,7 +252,7 @@ function Overview({ go, std, setStd }) {
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <div className="col-span-2">
+          <div className="md:col-span-2">
             <div className="text-xs mb-1" style={{ color: C.mute }}>보안장비 반영률 (%)</div>
             <ResponsiveContainer width="100%" height={110}>
               <LineChart data={CTAS.daily} margin={{ top: 6, right: 6, left: -20, bottom: 0 }}>
@@ -295,9 +295,9 @@ function Domain({ code, std }) {
           <span>이 영역이 충족하는 기준</span>{stds.map((s) => <Tag key={s} color={std === s ? C.steel : C.mute}>{STD_LABEL[s]} {all.filter((y) => y.map[s]).length}</Tag>)}
         </div>
       </div>
-      <div className="grid grid-cols-5 gap-4">
-        <div className="col-span-3 bg-white overflow-hidden" style={{ border: `1px solid ${C.line}`, borderRadius: 6 }}>
-          <table className="w-full text-sm">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="md:col-span-3 bg-white overflow-hidden" style={{ border: `1px solid ${C.line}`, borderRadius: 6 }}>
+          <div className="overflow-x-auto"><table className="w-full text-sm min-w-[520px]">
             <thead><tr className="text-xs text-left" style={{ color: C.mute, background: C.bg }}><th className="px-3 py-2 font-normal">활동</th><th className="px-2 py-2 font-normal">주기</th><th className="px-2 py-2 font-normal">다음 기한</th><th className="px-2 py-2 font-normal">수집</th><th className="px-2 py-2 font-normal">상태</th></tr></thead>
             <tbody className="divide-y" style={{ borderColor: C.line }}>
               {acts.map((r) => (
@@ -310,9 +310,9 @@ function Domain({ code, std }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
-        <div className="col-span-2">
+        <div className="md:col-span-2">
           {x && (
             <Card title={`${x.code} ${x.title}`} right={<Tag color={ST[x.status][1]}>{ST[x.status][0]}</Tag>}>
               <div className="text-sm space-y-4">
@@ -361,10 +361,10 @@ function Inbox({ requests, setRequests, go }) {
   const upd = (id, patch, note) => setRequests(requests.map((x) => (x.id === id ? { ...x, ...patch, log: [...x.log, `09-04 ${note}`] } : x)));
   return (
     <div className="space-y-4">
-      <div className="flex items-end justify-between"><h1 className="text-xl font-semibold">요청함</h1><span className="text-xs" style={{ color: C.mute }}>포털·Slack·Gmail·Claude에서 접수 → Linear 처리 → 활동 증빙</span></div>
-      <div className="grid grid-cols-5 gap-4">
-        <div className="col-span-3 bg-white overflow-hidden" style={{ border: `1px solid ${C.line}`, borderRadius: 6 }}>
-          <table className="w-full text-sm">
+      <div className="flex flex-wrap items-end justify-between gap-2"><h1 className="text-xl font-semibold">요청함</h1><span className="text-xs" style={{ color: C.mute }}>포털·Slack·Gmail·Claude에서 접수 → Linear 처리 → 활동 증빙</span></div>
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="md:col-span-3 bg-white overflow-hidden" style={{ border: `1px solid ${C.line}`, borderRadius: 6 }}>
+          <div className="overflow-x-auto"><table className="w-full text-sm min-w-[520px]">
             <thead><tr className="text-xs text-left" style={{ color: C.mute, background: C.bg }}><th className="px-3 py-2 font-normal">유형</th><th className="px-2 py-2 font-normal">내용</th><th className="px-2 py-2 font-normal">접수</th><th className="px-2 py-2 font-normal">기한</th><th className="px-2 py-2 font-normal">상태</th></tr></thead>
             <tbody className="divide-y" style={{ borderColor: C.line }}>
               {requests.map((x) => (
@@ -377,9 +377,9 @@ function Inbox({ requests, setRequests, go }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
-        <div className="col-span-2">
+        <div className="md:col-span-2">
           {r && (
             <Card title={r.title} right={<Tag color={col[r.status]}>{r.status}</Tag>}>
               <div className="text-sm space-y-4">
@@ -414,12 +414,12 @@ function EmpHome({ requests, go }) {
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold">김개발님, 오늘 할 일</h1>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {[["읽지 않은 정책·규칙", unread, unread ? ST.warn[1] : ST.ok[1], "policies"], ["미완료 교육·서약", todo, todo ? ST.warn[1] : ST.ok[1], "training"], ["내 요청", mine.length, C.ink, "requests"]].map(([l, v, c, pg]) => (
           <button key={l} onClick={() => go(pg)} className="text-left bg-white px-4 py-3 focus:outline-none focus:ring-2 rounded-sm" style={{ border: `1px solid ${C.line}`, borderRadius: 6 }}><div className="text-xs" style={{ color: C.mute }}>{l}</div><div className="text-2xl font-semibold mt-1" style={{ color: c }}>{v}</div></button>
         ))}
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <Card title="바로 하기"><div className="flex flex-wrap gap-2"><Btn primary onClick={() => go("requests")}>계정·권한 신청</Btn><Btn onClick={() => go("requests")}>보안사고·유출 신고</Btn><Btn onClick={() => go("requests")}>개인정보 처리 등록</Btn></div></Card>
         <Card title="정보보호부문 공지"><p className="text-sm leading-6">9월 피싱 모의훈련이 진행 중입니다. 송장·결제 위장 메일은 열지 말고 신고해 주세요. 정보보호 서약서는 9/30까지 제출 바랍니다.</p></Card>
       </div>
@@ -430,11 +430,11 @@ function EmpPolicies() {
   const [sel, setSel] = useState(0); const [read, setRead] = useState(POLICIES.map((p) => p.read));
   const p = POLICIES[sel];
   return (
-    <div className="grid grid-cols-5 gap-4">
-      <ul className="col-span-2 bg-white divide-y" style={{ border: `1px solid ${C.line}`, borderRadius: 6, borderColor: C.line }}>
+    <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <ul className="md:col-span-2 bg-white divide-y" style={{ border: `1px solid ${C.line}`, borderRadius: 6, borderColor: C.line }}>
         {POLICIES.map((x, i) => <li key={x.code} onClick={() => setSel(i)} className="px-4 py-3 cursor-pointer" style={{ background: sel === i ? "#EEF3F9" : undefined }}><div className="flex justify-between"><span className="text-sm font-medium">{x.title}</span>{read[i] ? <Tag color={ST.ok[1]}>열람</Tag> : <Tag color={ST.warn[1]}>미열람</Tag>}</div><div className="text-xs mt-0.5" style={{ color: C.mute }}>{x.code} {x.cat} {x.ver} 시행 {x.date}</div></li>)}
       </ul>
-      <div className="col-span-3"><Card title={`${p.code} ${p.title}`} right={<Tag>{p.ver}</Tag>}>
+      <div className="md:col-span-3"><Card title={`${p.code} ${p.title}`} right={<Tag>{p.ver}</Tag>}>
         <p className="text-sm leading-7">{p.body}</p>
         <div className="mt-6 pt-4 flex items-center gap-3" style={{ borderTop: `1px solid ${C.line}` }}><Btn primary onClick={() => setRead(read.map((r, i) => (i === sel ? true : r)))}>{read[sel] ? "열람 확인함" : "읽고 이해했습니다"}</Btn><span className="text-xs" style={{ color: C.mute }}>열람 확인은 G01 활동 증빙으로 저장됩니다.</span></div>
       </Card></div>
@@ -447,8 +447,8 @@ function EmpRequests({ requests, setRequests }) {
   const submit = () => { if (!f.title.trim()) return; const due = f.type === "정보주체" ? "09-14" : f.type === "유출" ? "09-07 " + new Date().toTimeString().slice(0, 5) : undefined; setRequests([{ id: Date.now(), type: f.type, title: f.title, by: "김개발", at: "09-04", status: "접수", act: TYPE_ACT[f.type], src: "포털", linear: "", due, log: ["09-04 포털 접수" + (due ? ` (기한 ${TYPE_DUE[f.type]}: ${due})` : "")] }, ...requests]); setF({ type: "권한", title: "", detail: "" }); };
   const col = { 접수: ST.warn[1], 처리중: C.steel, 완료: ST.ok[1], 반려: ST.gap[1] };
   return (
-    <div className="grid grid-cols-5 gap-4">
-      <div className="col-span-2"><Card title="요청·신고">
+    <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="md:col-span-2"><Card title="요청·신고">
         <div className="space-y-3 text-sm">
           <div className="flex flex-wrap gap-1.5">{REQ_TYPES.map((t) => <button key={t} onClick={() => setF({ ...f, type: t })} className="px-2.5 py-1 rounded-sm text-xs" style={{ background: f.type === t ? C.steel : "#fff", color: f.type === t ? "#fff" : C.ink, border: `1px solid ${C.line}` }}>{t}</button>)}</div>
           {TYPE_DUE[f.type] && <div className="text-xs" style={{ color: ST.gap[1] }}>{f.type === "유출" ? "접수 시각부터 72시간 내 신고 기한이 자동 계산됩니다." : "접수일부터 10일 내 처리 기한이 자동 계산됩니다."}</div>}
@@ -458,7 +458,7 @@ function EmpRequests({ requests, setRequests }) {
           <p className="text-xs" style={{ color: C.mute }}>Slack #security 또는 Claude에서도 같은 요청을 할 수 있습니다.</p>
         </div>
       </Card></div>
-      <div className="col-span-3"><Card title="내 요청">
+      <div className="md:col-span-3"><Card title="내 요청">
         <ul className="divide-y text-sm" style={{ borderColor: C.line }}>{mine.map((r) => <li key={r.id} className="py-2.5"><div className="flex items-center gap-2"><Tag>{r.type}</Tag><span>{r.title}</span><Tag color={col[r.status]}>{r.status}</Tag></div><div className="text-xs mt-0.5" style={{ color: C.mute }}>{r.log[r.log.length - 1]}</div></li>)}</ul>
       </Card></div>
     </div>
@@ -516,7 +516,7 @@ function BriefCard({ brief, briefs, onPick, loading, error }) {
         : error ? <p className="text-xs" style={{ color: ST.gap[1] }}>캘린더를 읽지 못했습니다. ({error})</p>
         : !brief ? <p className="text-xs" style={{ color: C.mute }}>등록된 브리프가 없습니다. 매일 08:30 모닝 브리프가 '보안활동' 캘린더에 [브리프] 일정으로 등록되면 여기에 표시됩니다.</p>
         : (
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {secs.map((s, i) => (
               <div key={i}>
                 {s.title && <div className="text-xs font-semibold mb-1.5" style={{ color: C.steel }}>{s.title}</div>}
@@ -550,9 +550,9 @@ function Calendar({ go }) {
     <div className="space-y-4">
       <h1 className="text-xl font-semibold">일정·브리프</h1>
       <BriefCard brief={brief} briefs={briefs} onPick={setPicked} loading={loading} error={error} />
-      <div className="flex items-end justify-between">
+      <div className="flex flex-wrap items-end justify-between gap-2">
         <div className="flex items-center gap-3"><h1 className="text-xl font-semibold">{y}년 {m}월</h1><Btn small onClick={() => move(-1)}>‹</Btn><Btn small onClick={() => move(1)}>›</Btn></div>
-        <div className="flex items-center gap-3 text-xs">
+        <div className="flex flex-wrap items-center gap-3 text-xs">
           {Object.entries(OST).map(([k, [l, c]]) => <span key={k} className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: c }} />{l} {cnt(k)}</span>)}
           <select value={filter} onChange={(e) => setFilter(e.target.value)} className="rounded-sm px-2 py-1" style={{ border: `1px solid ${C.line}` }}><option value="ALL">모든 영역</option>{DOMAINS.map((d) => <option key={d.code} value={d.code}>{d.name}</option>)}</select>
         </div>
@@ -563,7 +563,7 @@ function Calendar({ go }) {
           {cells.map((d, i) => {
             const today = d && `${y}-${pad(m)}-${pad(d)}` === TODAY;
             return (
-              <div key={i} className="min-h-24 p-1.5" style={{ borderTop: `1px solid ${C.line}`, borderLeft: i % 7 ? `1px solid ${C.line}` : undefined, background: d ? "#fff" : C.bg }}>
+              <div key={i} className="min-h-14 md:min-h-24 p-1 md:p-1.5" style={{ borderTop: `1px solid ${C.line}`, borderLeft: i % 7 ? `1px solid ${C.line}` : undefined, background: d ? "#fff" : C.bg }}>
                 {d && <div className="text-xs mb-1 w-5 h-5 flex items-center justify-center rounded-full" style={{ background: today ? C.ink : undefined, color: today ? "#fff" : C.mute }}>{d}</div>}
                 {(gByDay[d] || []).map((e) => (
                   <button key={e.id} onClick={() => e.brief && setPicked(e)} title={e.title} className="w-full text-left text-xs px-1 py-0.5 mb-0.5 rounded-sm truncate focus:outline-none focus:ring-2" style={{ background: e.brief ? C.steel : C.bg, color: e.brief ? "#fff" : C.ink, border: e.brief ? undefined : `1px solid ${C.line}` }}>{e.brief ? "브리프" : e.title}</button>
@@ -595,8 +595,8 @@ function ClaudePanel() {
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold">Claude</h1>
-      <div className="grid grid-cols-5 gap-4">
-        <div className="col-span-3 bg-white flex flex-col" style={{ border: `1px solid ${C.line}`, borderRadius: 6, minHeight: 480 }}>
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="md:col-span-3 bg-white flex flex-col" style={{ border: `1px solid ${C.line}`, borderRadius: 6, minHeight: 480 }}>
           <div className="flex-1 p-4 space-y-3 overflow-y-auto">
             {msgs.map((m, i) => <div key={i} className={"text-sm whitespace-pre-line max-w-lg px-3 py-2 rounded-md " + (m.r === "u" ? "ml-auto text-white" : "")} style={{ background: m.r === "u" ? C.steel : C.bg }}>{m.t}</div>)}
           </div>
@@ -605,7 +605,7 @@ function ClaudePanel() {
             <Btn primary onClick={() => ask(q)}>보내기</Btn>
           </div>
         </div>
-        <div className="col-span-2 space-y-3">
+        <div className="md:col-span-2 space-y-3">
           <Card title="바로 요청">
             <div className="flex flex-col gap-2">{Object.keys(CANNED).map((k) => <Btn key={k} small onClick={() => ask(k)}>{k}</Btn>)}</div>
           </Card>
@@ -637,19 +637,29 @@ export default function App() {
   const body = isEmp
     ? page === "policies" ? <EmpPolicies /> : page === "requests" ? <EmpRequests requests={requests} setRequests={setRequests} /> : page === "training" ? <EmpTraining /> : <EmpHome requests={requests} go={setPage} />
     : page === "overview" ? <Overview go={setPage} std={std} setStd={setStd} /> : page === "calendar" ? <Calendar go={setPage} /> : page === "inbox" ? <Inbox requests={requests} setRequests={setRequests} go={setPage} /> : page === "claude" ? <ClaudePanel /> : <Domain key={page + std} code={page} std={std} />;
+  const [menu, setMenu] = useState(false);
+  const goPage = (k) => { setPage(k); setMenu(false); };
+  const title = isEmp ? (EMP_NAV.find(([k]) => k === page) || [])[1] : (nav.find(([k]) => k === page) || [])[1] || DOMAINS.find((d) => d.code === page)?.name || "";
   return (
-    <div className="min-h-screen flex" style={{ background: C.bg, color: C.ink, fontFamily: "Pretendard, 'Apple SD Gothic Neo', 'Noto Sans KR', system-ui, sans-serif" }}>
+    <div className="min-h-screen flex flex-col md:flex-row" style={{ background: C.bg, color: C.ink, fontFamily: "Pretendard, 'Apple SD Gothic Neo', 'Noto Sans KR', system-ui, sans-serif" }}>
       <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
-      <aside className="w-52 shrink-0 flex flex-col text-white" style={{ background: C.rail }}>
+      <header className="md:hidden flex items-center gap-3 px-4 py-3 text-white sticky top-0 z-30" style={{ background: C.rail }}>
+        <button onClick={() => setMenu(!menu)} aria-label="메뉴" className="w-9 h-9 flex items-center justify-center rounded-sm focus:outline-none focus:ring-2" style={{ background: "rgba(255,255,255,.1)" }}>
+          <span className="text-lg leading-none">{menu ? "✕" : "☰"}</span>
+        </button>
+        <div className="min-w-0"><div className="text-sm font-semibold truncate">CCK 보안포털</div><div className="text-xs truncate" style={{ color: "#8A97AB" }}>{title}</div></div>
+      </header>
+      {menu && <div className="md:hidden fixed inset-0 z-30" style={{ background: "rgba(0,0,0,.45)", top: 56 }} onClick={() => setMenu(false)} />}
+      <aside className={(menu ? "flex" : "hidden") + " md:flex fixed md:static z-40 md:z-auto left-0 w-64 md:w-52 shrink-0 flex-col text-white overflow-y-auto"} style={{ background: C.rail, top: 56, bottom: 0 }}>
         <div className="px-5 pt-5 pb-4"><div className="text-base font-semibold tracking-tight">CCK 보안포털</div><div className="text-xs mt-0.5" style={{ color: "#8A97AB" }}>{isEmp ? "임직원" : "정보보호부문 · 관리자"}</div></div>
         <nav className="flex-1 px-2 overflow-y-auto">
-          {(isEmp ? EMP_NAV : nav).map(([k, v]) => <button key={k} onClick={() => setPage(k)} className="w-full flex items-center text-left text-sm px-3 py-2 rounded-sm mb-0.5 focus:outline-none focus:ring-2" style={{ background: page === k ? "rgba(255,255,255,.12)" : "transparent", color: page === k ? "#fff" : "#B5BFCD" }}>{v}{k === "inbox" && open > 0 && <span className="ml-auto text-xs px-1.5 rounded-sm" style={{ background: "rgba(183,121,31,.35)", color: "#F0D9A8" }}>{open}</span>}</button>)}
+          {(isEmp ? EMP_NAV : nav).map(([k, v]) => <button key={k} onClick={() => goPage(k)} className="w-full flex items-center text-left text-sm px-3 py-2 rounded-sm mb-0.5 focus:outline-none focus:ring-2" style={{ background: page === k ? "rgba(255,255,255,.12)" : "transparent", color: page === k ? "#fff" : "#B5BFCD" }}>{v}{k === "inbox" && open > 0 && <span className="ml-auto text-xs px-1.5 rounded-sm" style={{ background: "rgba(183,121,31,.35)", color: "#F0D9A8" }}>{open}</span>}</button>)}
           {!isEmp && <>
             <div className="text-xs px-3 pt-4 pb-1.5" style={{ color: "#6E7C91" }}>보안 영역</div>
             {DOMAINS.map((d, i) => {
               const gap = ACTS.filter((x) => x.d === d.code && x.status === "gap").length;
               return (
-                <button key={d.code} onClick={() => setPage(d.code)} className="w-full flex items-center text-left text-sm px-3 py-2 rounded-sm mb-0.5 focus:outline-none focus:ring-2" style={{ background: page === d.code ? "rgba(255,255,255,.12)" : "transparent", color: page === d.code ? "#fff" : "#B5BFCD" }}>
+                <button key={d.code} onClick={() => goPage(d.code)} className="w-full flex items-center text-left text-sm px-3 py-2 rounded-sm mb-0.5 focus:outline-none focus:ring-2" style={{ background: page === d.code ? "rgba(255,255,255,.12)" : "transparent", color: page === d.code ? "#fff" : "#B5BFCD" }}>
                   <span className="text-xs w-5 shrink-0" style={{ color: "#6E7C91" }}>{i + 1}</span><span className="truncate">{d.name}</span>
                   {gap > 0 && <span className="ml-auto text-xs px-1.5 rounded-sm" style={{ background: "rgba(178,58,58,.35)", color: "#F2B8B8" }}>{gap}</span>}
                 </button>
@@ -665,7 +675,7 @@ export default function App() {
           </select>
         </div>
       </aside>
-      <main className="flex-1 min-w-0 px-8 py-6 max-w-6xl">{body}</main>
+      <main className="flex-1 min-w-0 px-4 py-4 md:px-8 md:py-6 max-w-6xl">{body}</main>
     </div>
   );
 }
