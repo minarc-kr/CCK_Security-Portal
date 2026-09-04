@@ -202,6 +202,152 @@ const SRC = { ctas: "KISA C-TAS", portal: "포털", gws: "Google Workspace", git
 const ST = { ok: ["충족", "#2E7D5B"], warn: ["보완", "#B7791F"], gap: ["미비", "#B23A3A"] };
 const C = { ink: "#1B2432", rail: "#141C28", bg: "#F3F5F8", line: "#DCE1E8", mute: "#6B7686", steel: "#2E5C8A" };
 
+/* ─────────────── 요구 방법 안내 (기준별 제시 방법 · 20개 활동 우선) ─────────────── */
+// m(id, std, text)  — 활동별로 각 법·인증이 제시하는 방법. 채택한 방법은 포털에 저장되고 로그가 남는다.
+const METHODS = {
+  T04: [
+    ["PIPA", "비밀번호는 일방향(해시) 암호화, 고유식별정보·바이오정보는 저장 시 암호화(안전조치 기준 고시 7조)"],
+    ["PIPA", "개인정보 전송 시 SSL/TLS 등 안전한 전송 암호화"],
+    ["ISMSP", "2.7.1 암호정책 수립: 대상·알고리즘·키 길이·적용 범위 문서화 (SEED·ARIA·AES-256, SHA-256 이상)"],
+    ["ISMSP", "2.7.2 암호키 생성·이용·보관·배포·파기 절차 및 키 관리자 지정"],
+    ["CSAP", "KCMVP 검증필 암호모듈 사용(공공기관용), 국가정보원 검증 알고리즘 적용"],
+    ["ISO27001", "A.8.24 암호화 규칙·키 관리 절차 수립, 데이터 분류별 암호화 요건 정의"],
+    ["SOC2", "C1.1 기밀정보 식별 및 저장·전송 암호화 통제"],
+  ],
+  L02: [
+    ["ISMSP", "2.5.1 사용자 계정 등록·변경·삭제 절차와 승인자 지정, 최소권한 원칙"],
+    ["PIPA", "개인정보취급자 접근권한을 업무 필요 최소로 부여하고 부여·변경·말소 기록을 3년 보관(고시 5조)"],
+    ["ISO27001", "A.5.15~18 접근통제 정책, ID 관리, 인증정보 관리, 접근권한 부여·검토·회수"],
+    ["CSAP", "계정·권한 신청 승인 절차와 미사용 계정 정기 삭제"],
+    ["SOC2", "CC6.1~3 논리적 접근 통제 및 권한 부여·제거 절차"],
+  ],
+  L03: [
+    ["ISMSP", "2.5.6 접근권한 검토: 분기 1회 이상 계정·권한 적정성 검토 및 결과 기록"],
+    ["PIPA", "개인정보처리시스템 접근권한 적정성 정기 점검(고시 5조)"],
+    ["ISO27001", "A.5.18 정기적 접근권한 검토 및 역할 변경·퇴직 시 회수"],
+    ["SOC2", "CC6.2~3 접근권한 정기 검토 증빙"],
+  ],
+  L04: [
+    ["ISMSP", "2.5.3 특수계정(관리자·root·서비스계정) 목록화, 공용 사용 금지, 사용 이력 기록"],
+    ["PIPA", "개인정보처리시스템 외부 접속 시 안전한 인증수단(MFA) 적용(고시 6조)"],
+    ["CSAP", "관리자 접근은 MFA 필수, 관리 콘솔 접근 IP 제한"],
+    ["ISO27001", "A.8.2 특권 접근권한 제한·기록, A.8.5 보안 인증(MFA)"],
+  ],
+  L06: [
+    ["PIPA", "개인정보처리시스템 접속기록(계정·일시·접속지·수행업무) 1년 이상, 5만명↑·민감정보 처리 시 2년 이상 보관, 월 1회 점검, 위·변조 방지(고시 8조)"],
+    ["ISMSP", "2.9.4 로그 보존·보호, 2.9.5 로그 및 접속기록 정기 점검"],
+    ["ISO27001", "A.8.15 로깅, A.8.16 모니터링 활동, A.8.17 시각 동기화"],
+    ["CSAP", "로그 중앙 수집·보관(6개월↑), 관리자 행위 로그 검토"],
+    ["SOC2", "CC7.2 이상징후 모니터링 및 로그 검토"],
+  ],
+  L05: [
+    ["ISMSP", "2.10.7 보조저장매체 통제(등록·반출입 승인), 2.10.8 패치·DLP 등 유출 방지"],
+    ["PIPA", "개인정보 출력·복사 시 용도 특정 및 안전조치, 출력물 보호(고시 12조)"],
+    ["ISO27001", "A.5.10 자산 허용 사용, A.5.14 정보 전송, A.7.10 저장매체"],
+    ["TRADE", "영업비밀 반출 승인·기록으로 비밀관리성 입증"],
+  ],
+  L07: [
+    ["ISMSP", "2.2.3 보안서약(입사·외부자·퇴직), 2.2.5 퇴직 시 자산 반납·권한 회수·비밀유지 확인"],
+    ["PIPA", "개인정보취급자 비밀유지 서약 및 퇴직 후 의무 고지"],
+    ["ISO27001", "A.6.1 심사, A.6.2 고용 조건, A.6.5 고용 종료 책임, A.6.6 기밀유지 계약"],
+    ["TRADE", "부경법 2조③ 비밀유지 의무 부과(서약·계약)로 비밀관리성 요건 충족"],
+  ],
+  L08: [
+    ["ISMSP", "2.4.1~7 보호구역 지정·출입통제·반출입·업무환경(클린데스크)·설비 보호"],
+    ["PIPA", "개인정보 보관 장소 출입통제 및 문서 잠금장치(고시 10조)"],
+    ["ISO27001", "A.7.1~14 물리적 보안 경계, 출입, 사무실, 장비, 클리어 데스크"],
+    ["CSAP", "데이터센터 물리 보안(출입기록·CCTV) 확인 및 위탁 시 증빙 확보"],
+  ],
+  T01: [
+    ["ISMSP", "2.10.8 최신 패치 적용·예외 관리, 2.11.2 취약점 점검(연 1회 이상) 및 조치"],
+    ["PIPA", "보안프로그램 자동 업데이트 및 취약점 발견 시 즉시 조치(고시 9조)"],
+    ["CSAP", "취약점 점검 연 1회 이상(외부 전문기관 포함), 위험도별 조치 기한 관리"],
+    ["ISO27001", "A.8.8 기술적 취약점 관리(정보 수집·평가·조치·예외)"],
+    ["SOC2", "CC7.1 취약점 식별 및 대응"],
+  ],
+  T02: [
+    ["ISMSP", "2.10.9 악성코드 통제: 백신 설치·실시간 감시·주기적 검사·차단 기록"],
+    ["PIPA", "악성프로그램 방지 보안프로그램 설치·자동 갱신(고시 9조)"],
+    ["ISO27001", "A.8.7 악성코드 보호, A.8.1 사용자 단말 장치"],
+    ["CSAP", "엔드포인트 보호 및 관리자 단말 전용화"],
+  ],
+  T03: [
+    ["ISMSP", "2.6.1 네트워크 접근(방화벽 정책), 2.6.6 원격 접근(VPN·MFA·기록), 2.6.2 정보시스템 접근"],
+    ["PIPA", "개인정보처리시스템 접근 IP 제한·외부 접속 시 VPN/전용선(고시 6조)"],
+    ["CSAP", "망 구성도 관리, DMZ·내부망 분리, 관리망 별도 구성"],
+    ["ISO27001", "A.8.20~22 네트워크 보안·서비스·분리"],
+  ],
+  T05: [
+    ["ISMSP", "2.11.1 사고 예방·대응 체계, 2.11.3 이상행위 분석·모니터링, 대응 절차·연락망"],
+    ["NETLAW", "침해사고 인지 후 24시간 내 과기정통부·KISA 신고(48조의3)"],
+    ["PIPA", "개인정보 유출 인지 후 72시간 내 정보주체 통지·개인정보위 신고(34조)"],
+    ["ISO27001", "A.5.24~26 사고관리 계획·평가·대응"],
+    ["CLOUD", "이용자 정보 유출·서비스 중단 시 이용자에게 지체 없이 통지(25조)"],
+  ],
+  P07: [
+    ["ISMSP", "2.9.3 백업 정책(대상·주기·보관·복구 테스트), 2.12.1~2 재해복구 체계·복구 시험"],
+    ["PIPA", "재해·재난 대비 개인정보처리시스템 보호 및 백업·복구 계획(고시 11조)"],
+    ["CSAP", "백업 데이터 국내 보관, 복구 목표(RTO/RPO) 정의, 연 1회 복구 훈련"],
+    ["ISO27001", "A.5.29~30 중단 시 정보보안·ICT 준비, A.8.13~14 백업·이중화"],
+    ["SOC2", "A1.2~3 백업·복구 및 테스트"],
+  ],
+  P02: [
+    ["ISMSP", "2.8.6 운영환경 이관 승인, 2.9.1 변경관리(요청·영향분석·승인·기록)"],
+    ["ISO27001", "A.8.32 변경관리 절차"],
+    ["CSAP", "변경 승인·이력 관리, 긴급 변경 사후 승인"],
+    ["SOC2", "CC8.1 변경 개발·승인·배포 통제"],
+  ],
+  P08: [
+    ["ISMSP", "2.8.3 시험과 운영환경 분리, 2.8.4 시험 데이터 보안(실데이터 사용 시 승인·마스킹), 2.8.5 소스 프로그램 관리"],
+    ["ISO27001", "A.8.31 개발·시험·운영 환경 분리, A.8.33 시험 정보 보호"],
+    ["CSAP", "개발·운영 환경 분리 및 운영 데이터 반출 통제"],
+  ],
+  V03: [
+    ["PIPA", "수집·이용 동의 시 목적·항목·보유기간·거부권 고지, 선택 항목 분리 동의, 만 14세 미만 법정대리인 동의(15·22·22조의2)"],
+    ["ISMSP", "3.1.1 개인정보 수집·이용, 3.1.2 최소 수집, 3.1.7 마케팅 목적 처리 제한"],
+    ["SOC2", "P2 선택·동의, P3 수집"],
+  ],
+  V07: [
+    ["PIPA", "보유기간 경과·처리목적 달성 시 지체 없이(5일 이내) 파기, 복구 불가능한 방법(완전삭제·파쇄)으로, 파기 기록 보존(21조, 고시 13조)"],
+    ["ISMSP", "3.4.1 개인정보 파기, 3.4.2 처리목적 달성 후 보유 시 분리 보관"],
+    ["ISO27001", "A.5.10 정보 반환·삭제, A.8.10 정보 삭제"],
+    ["CLOUD", "계약 종료 시 이용자 정보 반환·파기 및 파기 확인서 발급(27조)"],
+  ],
+  V08: [
+    ["PIPA", "1천명 이상 유출 또는 민감·고유식별정보 유출 시 72시간 내 개인정보위(KISA) 신고, 정보주체 통지(34조)"],
+    ["NETLAW", "침해사고와 병행 시 KISA 신고(48조의3)"],
+    ["ISMSP", "2.11.5 사고 대응·복구, 3.5.2 정보주체 권리 보장"],
+    ["SOC2", "P6 통지 및 CC7.4 사고 대응"],
+  ],
+  E01: [
+    ["ISMSP", "2.2.4 연 1회 이상 임직원·외부자 교육, 역할별(개발자·관리자·취급자) 교육, 결과 기록"],
+    ["PIPA", "개인정보취급자 정기 교육 및 교육 계획·결과 보관(28조, 고시 4조)"],
+    ["ISO42001", "7.3 AI 역할별 인식 교육"],
+    ["ISO27001", "7.3 인식, A.6.3 정보보안 인식·교육·훈련"],
+    ["CSAP", "연간 교육 계획·수료율 관리"],
+  ],
+  A10: [
+    ["AIACT", "생성형 AI 결과물임을 표시(워터마크·문구), 고영향·생성형 AI 서비스 제공 사실 사전 고지, 딥페이크 등 합성 결과물 고지(31조)"],
+    ["ISO42001", "A.8 이해관계자 정보 제공·투명성"],
+    ["PIPA", "AI 처리 사실을 처리방침에 포함(30조)"],
+  ],
+};
+
+/* ─────────────── 브라우저 저장소 (프로토타입 · DB 연결 전) ─────────────── */
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("sp." + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem("sp." + k, JSON.stringify(v)); } catch (e) {} },
+};
+const nowStr = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+// 행위기반 감사로그: 누가 · 언제 · 무엇을(대상) · 어떻게(행위, 이전→이후) · 왜(사유)
+let CURRENT_USER = "이정민";
+function audit(action, target, detail = {}) {
+  const logs = store.get("audit", []);
+  logs.unshift({ id: Date.now() + Math.random().toString(36).slice(2, 6), at: nowStr(), who: CURRENT_USER, action, target, ...detail });
+  store.set("audit", logs.slice(0, 5000));
+}
+const ACTION_LABEL = { login: "로그인(역할 전환)", view: "화면 열람", method: "요구방법 채택", status: "활동 상태 변경", request: "요청 접수", process: "요청 처리", policy: "정책 열람 확인", brief: "브리프 조회", report: "리포트 출력", logcheck: "로그 점검 확인" };
+
 /* ─────────────── 공통 UI ─────────────── */
 const Tag = ({ children, color = C.mute }) => <span className="inline-block text-xs px-1.5 py-0.5 rounded-sm whitespace-nowrap" style={{ background: color + "1A", color }}>{children}</span>;
 const Btn = ({ children, onClick, primary, small }) => (
@@ -226,7 +372,7 @@ function Overview({ go, std, setStd }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <h1 className="text-xl font-semibold">보안활동 현황</h1>
-        <div className="flex flex-wrap gap-1">{["ALL", ...STD].map((s) => <button key={s} onClick={() => setStd(s)} className="text-xs px-2.5 py-1 rounded-sm" style={{ background: std === s ? C.ink : "#fff", color: std === s ? "#fff" : C.ink, border: `1px solid ${C.line}` }}>{s === "ALL" ? "전체" : STD_LABEL[s]}</button>)}</div>
+        <div className="flex flex-wrap gap-1"><Btn small onClick={() => printReport(std)}>리포트 출력</Btn>{["ALL", ...STD].map((s) => <button key={s} onClick={() => setStd(s)} className="text-xs px-2.5 py-1 rounded-sm" style={{ background: std === s ? C.ink : "#fff", color: std === s ? "#fff" : C.ink, border: `1px solid ${C.line}` }}>{s === "ALL" ? "전체" : STD_LABEL[s]}</button>)}</div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[["대상 활동", acts.length, C.ink], ["충족", tot.ok, ST.ok[1]], ["보완 필요", tot.warn, ST.warn[1]], ["미비", tot.gap, ST.gap[1]]].map(([l, v, c]) => (
@@ -306,6 +452,7 @@ function Overview({ go, std, setStd }) {
 /* ─────────────── 영역 화면 ─────────────── */
 function Domain({ code, std }) {
   const d = DOMAINS.find((x) => x.code === code);
+  useEffect(() => { audit("view", code, { how: `${d.name} 영역 열람` }); }, [code]);
   const all = ACTS.filter((x) => x.d === code);
   const acts = std === "ALL" ? all : all.filter((x) => x.map[std]);
   const [sel, setSel] = useState(acts[0]?.code);
@@ -366,7 +513,8 @@ function Domain({ code, std }) {
                   <div className="text-xs mb-1" style={{ color: C.mute }}>자동 수집</div>
                   <p className="text-xs">{x.auto.length ? `${x.auto.map((s) => SRC[s]).join(", ")}에서 ${x.cycle === "상시" ? "이벤트 발생 시" : "주기마다"} 수집` : "없음 — 수동 업로드로 관리"}</p>
                 </div>
-                <div className="flex gap-2 pt-3" style={{ borderTop: `1px solid ${C.line}` }}><Btn small primary>수행 기록</Btn><Btn small>파일 업로드 → Drive</Btn><Btn small>Linear 이슈 생성</Btn></div>
+                <MethodPanel act={x} />
+                <div className="flex flex-wrap gap-2 pt-3" style={{ borderTop: `1px solid ${C.line}` }}><Btn small primary onClick={() => audit("status", x.code, { how: "수행 기록 등록", note: x.title })}>수행 기록</Btn><Btn small>파일 업로드 → Drive</Btn><Btn small>Linear 이슈 생성</Btn></div>
               </div>
             </Card>
           )}
@@ -376,13 +524,125 @@ function Domain({ code, std }) {
   );
 }
 
+/* ─────────────── 요구 방법 패널 (활동 상세) ─────────────── */
+function MethodPanel({ act }) {
+  const list = METHODS[act.code] || [];
+  const saved = store.get("methods", {})[act.code] || { chosen: [], memo: "" };
+  const [chosen, setChosen] = useState(saved.chosen);
+  const [memo, setMemo] = useState(saved.memo);
+  const [open, setOpen] = useState(true);
+  const [hover, setHover] = useState(null);
+  const dirty = JSON.stringify(chosen) !== JSON.stringify(saved.chosen) || memo !== saved.memo;
+  const save = () => {
+    const all = store.get("methods", {});
+    const before = all[act.code];
+    all[act.code] = { chosen, memo, by: CURRENT_USER, at: nowStr() };
+    store.set("methods", all);
+    audit("method", act.code, { how: `채택 방법 ${chosen.length}개 저장`, before: before ? before.chosen.map((i) => `${list[i]?.[0]}#${i + 1}`).join(", ") : "(없음)", after: chosen.map((i) => `${list[i]?.[0]}#${i + 1}`).join(", "), why: memo || "(사유 미기재)", note: act.title });
+    setOpen(true);
+  };
+  if (!list.length) return (
+    <div className="text-xs py-2 px-3 rounded-sm" style={{ background: C.bg, color: C.mute }}>요구 방법 안내는 우선 20개 활동부터 제공됩니다. 이 활동은 다음 차수에 추가됩니다.</div>
+  );
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <button onClick={() => setOpen(!open)} className="text-xs font-semibold focus:outline-none" style={{ color: C.steel }}>{open ? "▾" : "▸"} 각 기준이 제시하는 방법 {list.length}개 · 채택 {chosen.length}개</button>
+        {saved.at && <span className="text-xs" style={{ color: C.mute }}>{saved.by} · {saved.at.slice(0, 16)} 저장</span>}
+      </div>
+      {open && (
+        <div className="space-y-1.5">
+          {list.map(([std, text], i) => {
+            const on = chosen.includes(i);
+            return (
+              <label key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} className="flex items-start gap-2 text-xs px-2 py-1.5 rounded-sm cursor-pointer" style={{ background: on ? "#EEF3F9" : hover === i ? C.bg : "#fff", border: `1px solid ${on ? C.steel : C.line}` }}>
+                <input type="checkbox" checked={on} onChange={() => setChosen(on ? chosen.filter((k) => k !== i) : [...chosen, i].sort((p, q) => p - q))} className="mt-0.5" />
+                <span className="shrink-0"><Tag color={C.steel}>{STD_LABEL[std]}</Tag></span>
+                <span style={{ color: C.ink }}>{text}</span>
+              </label>
+            );
+          })}
+          <textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={2} placeholder="채택 사유·적용 범위 메모 (예: 공공 SaaS는 KCMVP 모듈, 사내는 AES-256)" className="w-full text-xs px-2 py-1.5 rounded-sm" style={{ border: `1px solid ${C.line}` }} />
+          <div className="flex items-center gap-2"><Btn small primary onClick={save}>{dirty ? "채택 방법 저장" : "저장됨"}</Btn><span className="text-xs" style={{ color: C.mute }}>저장 시 누가·언제·무엇을·왜 로그가 남습니다.</span></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────── 로그점검 (행위기반 감사로그) ─────────────── */
+function AuditPage() {
+  const [logs, setLogs] = useState(() => store.get("audit", []));
+  const [who, setWho] = useState("ALL"); const [kind, setKind] = useState("ALL"); const [days, setDays] = useState(30);
+  const users = [...new Set(logs.map((l) => l.who))];
+  const since = (() => { const d = new Date(); d.setDate(d.getDate() - days); return d.toISOString().slice(0, 10); })();
+  const rows = logs.filter((l) => (who === "ALL" || l.who === who) && (kind === "ALL" || l.action === kind) && l.at.slice(0, 10) >= since);
+  const checks = store.get("logchecks", []);
+  const confirm = () => { audit("logcheck", "감사로그", { how: `최근 ${days}일 ${rows.length}건 점검`, note: "L06 접속기록·감사로그 검토 증빙" }); const c = [{ at: nowStr(), by: CURRENT_USER, n: rows.length }, ...checks]; store.set("logchecks", c.slice(0, 100)); setLogs(store.get("audit", [])); };
+  const csv = () => { const h = ["일시", "사용자", "행위", "대상", "내용", "이전", "이후", "사유"]; const body = rows.map((l) => [l.at, l.who, ACTION_LABEL[l.action] || l.action, l.target, l.how || "", l.before || "", l.after || "", l.why || ""].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")); const blob = new Blob(["\ufeff" + [h.join(","), ...body].join("\n")], { type: "text/csv" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `audit_${TODAY}.csv`; a.click(); audit("report", "감사로그 CSV", { how: `${rows.length}건 내보내기` }); };
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div><h1 className="text-xl font-semibold">로그점검</h1><p className="text-xs mt-1" style={{ color: C.mute }}>포털 내 모든 행위를 누가·언제·무엇을·어떻게(이전→이후)·왜 기준으로 기록합니다. 월 1회 점검 확인은 L06 증빙으로 남습니다.</p></div>
+        <div className="flex flex-wrap gap-2"><Btn small onClick={csv}>CSV 내보내기</Btn><Btn small primary onClick={confirm}>점검 확인</Btn></div>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[["기록 건수(기간 내)", rows.length, C.ink], ["사용자 수", users.length, C.steel], ["방법 채택", logs.filter((l) => l.action === "method").length, ST.ok[1]], ["최근 점검", checks[0] ? checks[0].at.slice(5, 16) : "없음", checks[0] ? ST.ok[1] : ST.warn[1]]].map(([l, v, c]) => (
+          <div key={l} className="bg-white px-4 py-3" style={{ border: `1px solid ${C.line}`, borderRadius: 6 }}><div className="text-xs" style={{ color: C.mute }}>{l}</div><div className="text-xl font-semibold mt-1" style={{ color: c }}>{v}</div></div>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-2 text-xs">
+        <select value={days} onChange={(e) => setDays(+e.target.value)} className="rounded-sm px-2 py-1" style={{ border: `1px solid ${C.line}` }}>{[7, 30, 90, 365].map((d) => <option key={d} value={d}>최근 {d}일</option>)}</select>
+        <select value={who} onChange={(e) => setWho(e.target.value)} className="rounded-sm px-2 py-1" style={{ border: `1px solid ${C.line}` }}><option value="ALL">모든 사용자</option>{users.map((u) => <option key={u} value={u}>{u}</option>)}</select>
+        <select value={kind} onChange={(e) => setKind(e.target.value)} className="rounded-sm px-2 py-1" style={{ border: `1px solid ${C.line}` }}><option value="ALL">모든 행위</option>{Object.entries(ACTION_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+      </div>
+      <div className="bg-white overflow-hidden" style={{ border: `1px solid ${C.line}`, borderRadius: 6 }}>
+        <div className="overflow-x-auto"><table className="w-full text-xs min-w-[720px]">
+          <thead><tr className="text-left" style={{ color: C.mute, background: C.bg }}><th className="px-3 py-2 font-normal">일시</th><th className="px-2 py-2 font-normal">사용자</th><th className="px-2 py-2 font-normal">행위</th><th className="px-2 py-2 font-normal">대상</th><th className="px-2 py-2 font-normal">내용(이전 → 이후)</th><th className="px-2 py-2 font-normal">사유</th></tr></thead>
+          <tbody className="divide-y" style={{ borderColor: C.line }}>
+            {rows.length ? rows.map((l) => (
+              <tr key={l.id}><td className="px-3 py-1.5 whitespace-nowrap" style={{ color: C.mute }}>{l.at}</td><td className="px-2 py-1.5 whitespace-nowrap">{l.who}</td><td className="px-2 py-1.5 whitespace-nowrap"><Tag color={l.action === "method" ? C.steel : l.action === "logcheck" ? ST.ok[1] : C.mute}>{ACTION_LABEL[l.action] || l.action}</Tag></td><td className="px-2 py-1.5 whitespace-nowrap">{l.target}</td><td className="px-2 py-1.5">{l.how}{l.before || l.after ? <div style={{ color: C.mute }}>{l.before || "—"} → {l.after || "—"}</div> : null}{l.note && <div style={{ color: C.mute }}>{l.note}</div>}</td><td className="px-2 py-1.5" style={{ color: C.mute }}>{l.why || ""}</td></tr>
+            )) : <tr><td colSpan={6} className="px-3 py-6 text-center" style={{ color: C.mute }}>조건에 맞는 기록이 없습니다.</td></tr>}
+          </tbody>
+        </table></div>
+      </div>
+      {checks.length > 0 && <p className="text-xs" style={{ color: C.mute }}>점검 이력: {checks.slice(0, 5).map((c) => `${c.at.slice(0, 16)} ${c.by}(${c.n}건)`).join(" · ")}</p>}
+    </div>
+  );
+}
+
+/* ─────────────── 활동현황 리포트 (인쇄·PDF) ─────────────── */
+function printReport(std) {
+  const acts = std === "ALL" ? ACTS : ACTS.filter((x) => x.map[std]);
+  const cnt = (l) => ({ ok: l.filter((x) => x.status === "ok").length, warn: l.filter((x) => x.status === "warn").length, gap: l.filter((x) => x.status === "gap").length });
+  const tot = cnt(acts);
+  const methods = store.get("methods", {});
+  const esc = (v) => String(v == null ? "" : v).replace(/[&<>]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[m]));
+  const stdRows = STD.map((s) => { const l = ACTS.filter((x) => x.map[s]); const c = cnt(l); return `<tr><td>${STD_LABEL[s]}</td><td>${l.length}</td><td>${c.ok}</td><td>${c.warn}</td><td>${c.gap}</td><td>${l.length ? Math.round((c.ok / l.length) * 100) : 0}%</td></tr>`; }).join("");
+  const domRows = DOMAINS.map((d) => { const l = acts.filter((x) => x.d === d.code); if (!l.length) return ""; const c = cnt(l); return `<tr><td>${d.name}</td><td>${l.length}</td><td>${c.ok}</td><td>${c.warn}</td><td>${c.gap}</td><td>${Math.round((c.ok / l.length) * 100)}%</td></tr>`; }).join("");
+  const gapRows = acts.filter((x) => x.status !== "ok").sort((p, q) => (p.next === "—" ? "9" : p.next).localeCompare(q.next === "—" ? "9" : q.next)).map((x) => `<tr><td>${x.code}</td><td>${esc(x.title)}</td><td>${DOMAINS.find((d) => d.code === x.d).name}</td><td>${x.cycle}</td><td>${x.next}</td><td>${ST[x.status][0]}</td><td>${x.ev.length}</td></tr>`).join("");
+  const mRows = Object.entries(methods).map(([code, m]) => { const x = ACTS.find((a) => a.code === code); const list = METHODS[code] || []; return `<tr><td>${code}</td><td>${esc(x?.title)}</td><td>${m.chosen.map((i) => list[i] ? `[${STD_LABEL[list[i][0]]}] ${esc(list[i][1])}` : "").join("<br>")}</td><td>${esc(m.memo)}</td><td>${esc(m.by)}<br>${esc(m.at?.slice(0, 16))}</td></tr>`; }).join("");
+  const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>보안활동 현황 리포트 ${TODAY}</title>
+<style>body{font-family:Pretendard,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;color:#1B2432;margin:32px;font-size:12px}h1{font-size:20px;margin:0 0 4px}h2{font-size:14px;margin:24px 0 8px;border-bottom:1px solid #DCE1E8;padding-bottom:4px}table{width:100%;border-collapse:collapse;margin-bottom:8px}th,td{border:1px solid #DCE1E8;padding:4px 6px;text-align:left;vertical-align:top}th{background:#F3F5F8;font-weight:600}.kpi{display:flex;gap:12px;margin:12px 0}.kpi div{flex:1;border:1px solid #DCE1E8;padding:8px 10px}.kpi b{display:block;font-size:20px}.mute{color:#6B7686}@media print{body{margin:12mm}button{display:none}}</style></head><body>
+<button onclick="window.print()" style="float:right;padding:6px 12px">인쇄 / PDF 저장</button>
+<h1>CCK 보안활동 현황 리포트</h1><div class="mute">기준일 ${TODAY} · 필터 ${std === "ALL" ? "전체" : STD_LABEL[std]} · 작성 ${esc(CURRENT_USER)} · 출력 ${nowStr()}</div>
+<div class="kpi"><div>대상 활동<b>${acts.length}</b></div><div>충족<b style="color:#2E7D5B">${tot.ok}</b></div><div>보완 필요<b style="color:#B7791F">${tot.warn}</b></div><div>미비<b style="color:#B23A3A">${tot.gap}</b></div><div>이행률<b>${acts.length ? Math.round((tot.ok / acts.length) * 100) : 0}%</b></div></div>
+<h2>1. 기준별 이행 현황</h2><table><tr><th>기준</th><th>대상</th><th>충족</th><th>보완</th><th>미비</th><th>이행률</th></tr>${stdRows}</table>
+<h2>2. 영역별 이행 현황</h2><table><tr><th>영역</th><th>대상</th><th>충족</th><th>보완</th><th>미비</th><th>이행률</th></tr>${domRows}</table>
+<h2>3. 미충족 활동 목록 (기한순)</h2><table><tr><th>코드</th><th>활동</th><th>영역</th><th>주기</th><th>다음 기한</th><th>상태</th><th>증빙</th></tr>${gapRows}</table>
+<h2>4. 채택한 요구 방법</h2>${mRows ? `<table><tr><th>코드</th><th>활동</th><th>채택 방법</th><th>사유</th><th>채택자·일시</th></tr>${mRows}</table>` : "<p class=\"mute\">채택된 방법이 없습니다.</p>"}
+<p class="mute">본 리포트는 보안포털 활동 현황을 기준으로 자동 생성되었습니다. 경영진 검토(G05)·외부 심사 대응(U05) 증빙으로 사용합니다.</p></body></html>`;
+  const w = window.open("", "_blank"); if (!w) { console.warn("popup blocked"); return; } w.document.write(html); w.document.close();
+  audit("report", "활동현황 리포트", { how: `${std === "ALL" ? "전체" : STD_LABEL[std]} 기준 ${acts.length}개 활동 출력` });
+}
+
 /* ─────────────── 요청함 (정보보호부문) ─────────────── */
 function Inbox({ requests, setRequests, go }) {
   const col = { 접수: ST.warn[1], 처리중: C.steel, 완료: ST.ok[1], 반려: ST.gap[1] };
   const [sel, setSel] = useState(requests[0]?.id);
   const r = requests.find((x) => x.id === sel) || requests[0];
   const act = r && ACTS.find((x) => x.code === r.act);
-  const upd = (id, patch, note) => setRequests(requests.map((x) => (x.id === id ? { ...x, ...patch, log: [...x.log, `09-04 ${note}`] } : x)));
+  const upd = (id, patch, note) => { const cur = requests.find((x) => x.id === id); audit("process", `요청 #${id}`, { how: note, before: cur?.status, after: patch.status || cur?.status, note: cur?.title }); setRequests(requests.map((x) => (x.id === id ? { ...x, ...patch, log: [...x.log, `09-04 ${note}`] } : x))); };
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-2"><h1 className="text-xl font-semibold">요청함</h1><span className="text-xs" style={{ color: C.mute }}>포털·Slack·Gmail·Claude에서 접수 → Linear 처리 → 활동 증빙</span></div>
@@ -460,7 +720,7 @@ function EmpPolicies() {
       </ul>
       <div className="md:col-span-3"><Card title={`${p.code} ${p.title}`} right={<Tag>{p.ver}</Tag>}>
         <p className="text-sm leading-7">{p.body}</p>
-        <div className="mt-6 pt-4 flex items-center gap-3" style={{ borderTop: `1px solid ${C.line}` }}><Btn primary onClick={() => setRead(read.map((r, i) => (i === sel ? true : r)))}>{read[sel] ? "열람 확인함" : "읽고 이해했습니다"}</Btn><span className="text-xs" style={{ color: C.mute }}>열람 확인은 G01 활동 증빙으로 저장됩니다.</span></div>
+        <div className="mt-6 pt-4 flex items-center gap-3" style={{ borderTop: `1px solid ${C.line}` }}><Btn primary onClick={() => { if (!read[sel]) audit("policy", p.code, { how: "열람 확인", note: p.title }); setRead(read.map((r, i) => (i === sel ? true : r))); }}>{read[sel] ? "열람 확인함" : "읽고 이해했습니다"}</Btn><span className="text-xs" style={{ color: C.mute }}>열람 확인은 G01 활동 증빙으로 저장됩니다.</span></div>
       </Card></div>
     </div>
   );
@@ -468,7 +728,7 @@ function EmpPolicies() {
 function EmpRequests({ requests, setRequests }) {
   const [f, setF] = useState({ type: "권한", title: "", detail: "" });
   const mine = requests.filter((r) => r.by === "김개발");
-  const submit = () => { if (!f.title.trim()) return; const due = f.type === "정보주체" ? "09-14" : f.type === "유출" ? "09-07 " + new Date().toTimeString().slice(0, 5) : undefined; setRequests([{ id: Date.now(), type: f.type, title: f.title, by: "김개발", at: "09-04", status: "접수", act: TYPE_ACT[f.type], src: "포털", linear: "", due, log: ["09-04 포털 접수" + (due ? ` (기한 ${TYPE_DUE[f.type]}: ${due})` : "")] }, ...requests]); setF({ type: "권한", title: "", detail: "" }); };
+  const submit = () => { if (!f.title.trim()) return; audit("request", f.type, { how: "포털 요청 접수", note: f.title }); const due = f.type === "정보주체" ? "09-14" : f.type === "유출" ? "09-07 " + new Date().toTimeString().slice(0, 5) : undefined; setRequests([{ id: Date.now(), type: f.type, title: f.title, by: "김개발", at: "09-04", status: "접수", act: TYPE_ACT[f.type], src: "포털", linear: "", due, log: ["09-04 포털 접수" + (due ? ` (기한 ${TYPE_DUE[f.type]}: ${due})` : "")] }, ...requests]); setF({ type: "권한", title: "", detail: "" }); };
   const col = { 접수: ST.warn[1], 처리중: C.steel, 완료: ST.ok[1], 반려: ST.gap[1] };
   return (
     <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -654,13 +914,13 @@ export default function App() {
   const [page, setPage] = useState("overview");
   const [std, setStd] = useState("ALL");
   const [requests, setRequests] = useState(INIT_REQUESTS);
-  const nav = [["overview", "현황"], ["calendar", "일정·브리프"], ["inbox", "요청함"], ["claude", "Claude"]];
+  const nav = [["overview", "현황"], ["calendar", "일정·브리프"], ["inbox", "요청함"], ["audit", "로그점검"], ["claude", "Claude"]];
   const open = requests.filter((r) => ["접수", "처리중"].includes(r.status)).length;
-  const switchRole = (r) => { setRole(r); setPage(r === "employee" ? "ehome" : "overview"); };
+  const switchRole = (r) => { CURRENT_USER = r === "employee" ? "김개발" : "이정민"; audit("login", "보안포털", { how: `${r === "employee" ? "임직원" : "정보보호부문"} 역할로 접속` }); setRole(r); setPage(r === "employee" ? "ehome" : "overview"); };
   const isEmp = role === "employee";
   const body = isEmp
     ? page === "policies" ? <EmpPolicies /> : page === "requests" ? <EmpRequests requests={requests} setRequests={setRequests} /> : page === "training" ? <EmpTraining /> : <EmpHome requests={requests} go={setPage} />
-    : page === "overview" ? <Overview go={setPage} std={std} setStd={setStd} /> : page === "calendar" ? <Calendar go={setPage} /> : page === "inbox" ? <Inbox requests={requests} setRequests={setRequests} go={setPage} /> : page === "claude" ? <ClaudePanel /> : <Domain key={page + std} code={page} std={std} />;
+    : page === "overview" ? <Overview go={setPage} std={std} setStd={setStd} /> : page === "calendar" ? <Calendar go={setPage} /> : page === "inbox" ? <Inbox requests={requests} setRequests={setRequests} go={setPage} /> : page === "audit" ? <AuditPage /> : page === "claude" ? <ClaudePanel /> : <Domain key={page + std} code={page} std={std} />;
   const [menu, setMenu] = useState(false);
   const goPage = (k) => { setPage(k); setMenu(false); };
   const title = isEmp ? (EMP_NAV.find(([k]) => k === page) || [])[1] : (nav.find(([k]) => k === page) || [])[1] || DOMAINS.find((d) => d.code === page)?.name || "";
