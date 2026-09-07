@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { C, store, audit, ACTION_LABEL, pad, nowStr, setUser, Tag, Btn, Card, Bar } from "./common.jsx";
+import PiaTool, { EmpPia } from "./Pia.jsx";
 import { BarChart, Bar as RBar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 /* ─────────────── 영역·활동 데이터 (인증 요구 활동 기준) ─────────────── */
@@ -155,7 +157,6 @@ const linkOf = (x) => LINKS[x.code] || { linear: "(이슈 없음)", drive: `보�
 
 /* 주기 → 회차 생성 (2026-07 ~ 2027-06) */
 const TODAY = "2026-09-04";
-const pad = (n) => String(n).padStart(2, "0");
 const lastDay = (y, m) => new Date(y, m, 0).getDate();
 function occurrences() {
   const out = [];
@@ -200,7 +201,6 @@ const CTAS = {
 };
 const SRC = { ctas: "KISA C-TAS", portal: "포털", gws: "Google Workspace", github: "GitHub", slack: "Slack", jira: "Jira", netlify: "Netlify", manual: "수동" };
 const ST = { ok: ["충족", "#2E7D5B"], warn: ["보완", "#B7791F"], gap: ["미비", "#B23A3A"] };
-const C = { ink: "#1B2432", rail: "#141C28", bg: "#F3F5F8", line: "#DCE1E8", mute: "#6B7686", steel: "#2E5C8A" };
 
 /* ─────────────── 요구 방법 안내 (기준별 제시 방법 · 20개 활동 우선) ─────────────── */
 // m(id, std, text)  — 활동별로 각 법·인증이 제시하는 방법. 채택한 방법은 포털에 저장되고 로그가 남는다.
@@ -458,33 +458,8 @@ const APPROVAL = {
 };
 
 /* ─────────────── 브라우저 저장소 (프로토타입 · DB 연결 전) ─────────────── */
-const store = {
-  get(k, d) { try { const v = localStorage.getItem("sp." + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
-  set(k, v) { try { localStorage.setItem("sp." + k, JSON.stringify(v)); } catch (e) {} },
-};
-const nowStr = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
-// 행위기반 감사로그: 누가 · 언제 · 무엇을(대상) · 어떻게(행위, 이전→이후) · 왜(사유)
-let CURRENT_USER = "이정민";
-function audit(action, target, detail = {}) {
-  const logs = store.get("audit", []);
-  logs.unshift({ id: Date.now() + Math.random().toString(36).slice(2, 6), at: nowStr(), who: CURRENT_USER, action, target, ...detail });
-  store.set("audit", logs.slice(0, 5000));
-}
-const ACTION_LABEL = { login: "로그인(역할 전환)", view: "화면 열람", method: "요구방법 채택", status: "활동 상태 변경", request: "요청 접수", process: "요청 처리", policy: "정책 열람 확인", brief: "브리프 조회", report: "리포트 출력", logcheck: "로그 점검 확인" };
-
 /* ─────────────── 공통 UI ─────────────── */
-const Tag = ({ children, color = C.mute }) => <span className="inline-block text-xs px-1.5 py-0.5 rounded-sm whitespace-nowrap" style={{ background: color + "1A", color }}>{children}</span>;
-const Btn = ({ children, onClick, primary, small }) => (
-  <button onClick={onClick} className={(small ? "text-xs px-2.5 py-1 " : "text-sm px-3.5 py-1.5 ") + "rounded-sm font-medium focus:outline-none focus:ring-2"} style={primary ? { background: C.steel, color: "#fff" } : { background: "#fff", color: C.ink, border: `1px solid ${C.line}` }}>{children}</button>
-);
-const Card = ({ title, right, children }) => (
-  <section className="bg-white" style={{ border: `1px solid ${C.line}`, borderRadius: 6 }}>
-    {title && <header className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${C.line}` }}><h3 className="text-sm font-semibold">{title}</h3>{right}</header>}
-    <div className="p-4">{children}</div>
-  </section>
-);
 const Dot = ({ s }) => <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: ST[s][1] }} />;
-const Bar = ({ v, color }) => <div className="h-1.5 rounded-full w-full" style={{ background: C.line }}><div className="h-1.5 rounded-full" style={{ width: `${v}%`, background: color || C.steel }} /></div>;
 
 /* ─────────────── 현황 ─────────────── */
 function Overview({ go, std, setStd }) {
@@ -574,7 +549,7 @@ function Overview({ go, std, setStd }) {
 }
 
 /* ─────────────── 영역 화면 ─────────────── */
-function Domain({ code, std }) {
+function Domain({ code, std, go }) {
   const d = DOMAINS.find((x) => x.code === code);
   useEffect(() => { audit("view", code, { how: `${d.name} 영역 열람` }); }, [code]);
   const all = ACTS.filter((x) => x.d === code);
@@ -644,6 +619,13 @@ function Domain({ code, std }) {
                       {[["기안", APPROVAL[x.code].draft], ["검토", APPROVAL[x.code].review], ["전결", APPROVAL[x.code].approve], ["보고", APPROVAL[x.code].report]].map(([k, v]) => <tr key={k}><td className="py-0.5 w-16" style={{ color: C.mute }}>{k}</td><td className="py-0.5" style={{ color: v === "—" ? C.mute : C.ink }}>{v}</td></tr>)}
                       <tr><td className="py-0.5" style={{ color: C.mute }}>근거</td><td className="py-0.5" style={{ color: C.mute }}>{APPROVAL[x.code].basis}</td></tr>
                     </tbody></table>
+                  </div>
+                )}
+                {["V01", "V06"].includes(x.code) && (
+                  <div className="px-3 py-2.5 rounded-sm" style={{ background: "#EEF3F9", border: `1px solid #D3E0EE` }}>
+                    <div className="text-xs mb-1.5" style={{ color: C.steel }}>이 활동은 포털 도구로 수행합니다</div>
+                    <p className="text-xs mb-2" style={{ color: C.mute }}>{x.code === "V01" ? "처리업무별 흐름표를 입력하면 개인정보 흐름도가 자동으로 그려집니다." : "흐름표를 바탕으로 침해요인 28항목을 평가하고 영향평가서를 Word로 내려받습니다."}</p>
+                    <Btn small primary onClick={() => go("pia")}>개인정보 흐름도·영향평가 열기</Btn>
                   </div>
                 )}
                 <MethodPanel act={x} />
@@ -1041,19 +1023,19 @@ function ClaudePanel() {
 }
 
 /* ─────────────── 앱 ─────────────── */
-const EMP_NAV = [["ehome", "홈"], ["policies", "정책·규칙 읽기"], ["requests", "요청·신고"], ["training", "내 교육·서약"]];
+const EMP_NAV = [["ehome", "홈"], ["policies", "정책·규칙 읽기"], ["requests", "요청·신고"], ["epia", "개인정보 현황 입력"], ["training", "내 교육·서약"]];
 export default function App() {
   const [role, setRole] = useState("security");
   const [page, setPage] = useState("overview");
   const [std, setStd] = useState("ALL");
   const [requests, setRequests] = useState(INIT_REQUESTS);
-  const nav = [["overview", "현황"], ["calendar", "일정·브리프"], ["inbox", "요청함"], ["audit", "로그점검"], ["claude", "Claude"]];
+  const nav = [["overview", "현황"], ["calendar", "일정·브리프"], ["inbox", "요청함"], ["pia", "개인정보 흐름도"], ["audit", "로그점검"], ["claude", "Claude"]];
   const open = requests.filter((r) => ["접수", "처리중"].includes(r.status)).length;
-  const switchRole = (r) => { CURRENT_USER = r === "employee" ? "김개발" : "이정민"; audit("login", "보안포털", { how: `${r === "employee" ? "임직원" : "정보보호부문"} 역할로 접속` }); setRole(r); setPage(r === "employee" ? "ehome" : "overview"); };
+  const switchRole = (r) => { setUser(r === "employee" ? "김개발" : "이정민"); audit("login", "보안포털", { how: `${r === "employee" ? "임직원" : "정보보호부문"} 역할로 접속` }); setRole(r); setPage(r === "employee" ? "ehome" : "overview"); };
   const isEmp = role === "employee";
   const body = isEmp
-    ? page === "policies" ? <EmpPolicies /> : page === "requests" ? <EmpRequests requests={requests} setRequests={setRequests} /> : page === "training" ? <EmpTraining /> : <EmpHome requests={requests} go={setPage} />
-    : page === "overview" ? <Overview go={setPage} std={std} setStd={setStd} /> : page === "calendar" ? <Calendar go={setPage} /> : page === "inbox" ? <Inbox requests={requests} setRequests={setRequests} go={setPage} /> : page === "audit" ? <AuditPage /> : page === "claude" ? <ClaudePanel /> : <Domain key={page + std} code={page} std={std} />;
+    ? page === "policies" ? <EmpPolicies /> : page === "requests" ? <EmpRequests requests={requests} setRequests={setRequests} /> : page === "epia" ? <EmpPia /> : page === "training" ? <EmpTraining /> : <EmpHome requests={requests} go={setPage} />
+    : page === "overview" ? <Overview go={setPage} std={std} setStd={setStd} /> : page === "calendar" ? <Calendar go={setPage} /> : page === "inbox" ? <Inbox requests={requests} setRequests={setRequests} go={setPage} /> : page === "pia" ? <PiaTool /> : page === "audit" ? <AuditPage /> : page === "claude" ? <ClaudePanel /> : <Domain key={page + std} code={page} std={std} go={setPage} />;
   const [menu, setMenu] = useState(false);
   const goPage = (k) => { setPage(k); setMenu(false); };
   const title = isEmp ? (EMP_NAV.find(([k]) => k === page) || [])[1] : (nav.find(([k]) => k === page) || [])[1] || DOMAINS.find((d) => d.code === page)?.name || "";
