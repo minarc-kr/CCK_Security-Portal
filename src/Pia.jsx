@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { C, store, audit, Tag, Btn, Card } from "./common.jsx";
-import { COLL_COLS, RET_COLS, PROV_COLS, IMP_COLS, RISK_ITEMS, RISK_LEVELS, RISK_COLOR, RISK_FILL_DOCX, STEPS, newRow, blankPia, INTRO_QUESTIONS, QUESTIONS, tasksToRows, SENS_RE } from "./pia-data.js";
+import { COLL_COLS, RET_COLS, PROV_COLS, IMP_COLS, RISK_ITEMS, RISK_LEVELS, RISK_COLOR, RISK_FILL_DOCX, STEPS, newRow, blankPia, tasksToRows, SENS_RE } from "./pia-data.js";
 import { flowDiagramSVG } from "./pia-flow.js";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -181,7 +181,7 @@ function RiskView({ s, onChange }) {
 }
 
 /* ─────────────── 관리자 도구 본체 ─────────────── */
-export default function PiaTool() {
+export default function PiaTool({ go }) {
   const [s, setS] = useState(loadPia);
   const [step, setStep] = useState(0);
   const [msg, setMsg] = useState("");
@@ -321,6 +321,7 @@ export default function PiaTool() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
+          {go && <button onClick={() => go("D07")} className="text-xs mb-1.5" style={{ color: C.steel }}>← 개인정보보호</button>}
           <h1 className="text-xl font-semibold">개인정보 흐름도·영향평가</h1>
           <div className="text-xs mt-1" style={{ color: C.mute }}>V01 처리현황·흐름도 관리 · V06 개인정보 영향평가 — 개인정보보호법 33조, ISMS-P 3.2.1</div>
         </div>
@@ -383,148 +384,6 @@ export default function PiaTool() {
       <div className="flex justify-between pt-2">
         <Btn small onClick={() => setStep(Math.max(0, step - 1))} disabled={step === 0}>← 이전</Btn>
         <Btn small primary onClick={() => setStep(Math.min(STEPS.length - 1, step + 1))} disabled={step === STEPS.length - 1}>다음 →</Btn>
-      </div>
-    </div>
-  );
-}
-
-/* ══════════════ 임직원: 개인정보 현황 입력 봇 ══════════════ */
-const visibleQs = (provSkip) => QUESTIONS.filter((q) => !(q.cond === "prov" && provSkip));
-
-export function EmpPia() {
-  const [intro, setIntro] = useState(() => store.get("piaDraft", {}).intro || { 부서: "", 담당자: "" });
-  const [ii, setIi] = useState(() => (store.get("piaDraft", {}).intro?.담당자 ? 2 : 0));
-  const [cur, setCur] = useState(() => store.get("piaDraft", {}).cur || {});
-  const [qi, setQi] = useState(() => store.get("piaDraft", {}).qi || 0);
-  const [tasks, setTasks] = useState(() => store.get("piaDraft", {}).tasks || []);
-  const [text, setText] = useState("");
-  const [msg, setMsg] = useState("");
-  const [editTask, setEditTask] = useState(null);
-  const provSkip = cur.__provYN === "아니오, 내부만 이용";
-  const qs = visibleQs(provSkip);
-  const inIntro = ii < INTRO_QUESTIONS.length;
-  const q = inIntro ? INTRO_QUESTIONS[ii] : qs[qi];
-  const done = !inIntro && qi >= qs.length;
-
-  useEffect(() => { store.set("piaDraft", { intro, cur, qi, tasks }); }, [intro, cur, qi, tasks]);
-  const note = (t) => { setMsg(t); setTimeout(() => setMsg(""), 3000); };
-
-  const answer = (v) => {
-    if (!String(v).trim()) return;
-    if (inIntro) { setIntro({ ...intro, [q.key]: v }); setIi(ii + 1); }
-    else { setCur({ ...cur, [q.key]: v }); setQi(qi + 1); }
-    setText("");
-  };
-  const back = () => {
-    if (done) { setQi(qs.length - 1); return; }
-    if (inIntro) { if (ii > 0) setIi(ii - 1); return; }
-    if (qi > 0) setQi(qi - 1); else setIi(INTRO_QUESTIONS.length - 1);
-    setText("");
-  };
-  const jump = (key) => {
-    const i = qs.findIndex((x) => x.key === key);
-    if (i >= 0) { setQi(i); setText(""); }
-  };
-
-  const finishTask = () => {
-    if (!cur.업무명) return note("업무명이 없습니다.");
-    const t = { ...cur, 부서: intro.부서, 담당자: intro.담당자, 수집담당자: intro.부서, 개인정보취급자: intro.부서, 파기담당자: intro.부서 };
-    delete t.__provYN;
-    if (editTask !== null) { setTasks(tasks.map((x, i) => (i === editTask ? t : x))); setEditTask(null); note("업무를 수정했습니다."); }
-    else { setTasks([...tasks, t]); note(`「${t.업무명}」 저장했습니다.`); }
-    setCur({}); setQi(0);
-  };
-  const openTask = (i) => { const t = { ...tasks[i] }; setCur({ ...t, __provYN: t.수신자 ? "예, 제공/위탁함" : "아니오, 내부만 이용" }); setEditTask(i); setQi(0); note("수정 모드입니다. 끝까지 진행하면 반영됩니다."); };
-  const delTask = (i) => { setTasks(tasks.filter((_, x) => x !== i)); if (editTask === i) { setEditTask(null); setCur({}); setQi(0); } };
-
-  const submit = () => {
-    const all = cur.업무명 ? [...tasks, { ...cur, 부서: intro.부서, 담당자: intro.담당자, 수집담당자: intro.부서, 개인정보취급자: intro.부서, 파기담당자: intro.부서 }] : tasks;
-    if (!all.length) return note("저장된 업무가 없습니다.");
-    const rec = { id: Date.now(), 부서: intro.부서, 담당자: intro.담당자, at: new Date().toISOString().slice(0, 16).replace("T", " "), tasks: all.map((t) => { const c = { ...t }; delete c.__provYN; return c; }) };
-    store.set("piaIntake", [...store.get("piaIntake", []), rec]);
-    audit("pia_intake", "V01", { how: `개인정보 현황 입력 제출 ${all.length}건`, note: `${intro.부서} · ${intro.담당자}` });
-    setTasks([]); setCur({}); setQi(0); setEditTask(null);
-    note(`${all.length}건을 정보보호부문에 제출했습니다.`);
-  };
-  const saveJson = () => {
-    const all = cur.업무명 ? [...tasks, cur] : tasks;
-    dl(new Blob([JSON.stringify({ 부서: intro.부서, 담당자: intro.담당자, tasks: all }, null, 2)], { type: "application/json" }), `pia_intake_${today()}.json`);
-  };
-
-  const answered = qs.slice(0, qi).map((x) => [x.key, cur[x.key]]).filter(([, v]) => v);
-
-  return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">개인정보 현황 입력</h1>
-        <div className="text-xs mt-1" style={{ color: C.mute }}>담당 업무에서 개인정보를 어떻게 다루는지 질문에 답해주세요. 용어를 몰라도 괜찮습니다. 잘못 답했으면 ‘이전’이나 답변 목록에서 고칠 수 있습니다.</div>
-      </div>
-      {msg && <div className="text-xs px-3 py-2 rounded-sm" style={{ background: "#EEF3F9", color: C.steel }}>{msg}</div>}
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="md:col-span-2 space-y-3">
-          <Card title={done ? "입력 완료" : `${inIntro ? "시작" : q.sec} — ${inIntro ? ii + 1 : qi + 1}/${inIntro ? INTRO_QUESTIONS.length : qs.length}`}
-            right={<Tag color={editTask !== null ? "#B7791F" : C.mute}>{editTask !== null ? "수정 중" : `업무 ${tasks.length}건`}</Tag>}>
-            {done ? (
-              <div className="space-y-3">
-                <p className="text-sm">「{cur.업무명}」 업무 입력이 끝났습니다. 저장하고 다음 업무를 이어서 입력하거나, 제출하세요.</p>
-                <div className="flex flex-wrap gap-2"><Btn small primary onClick={finishTask}>{editTask !== null ? "수정 반영" : "이 업무 저장"}</Btn><Btn small onClick={back}>← 마지막 질문으로</Btn></div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div>
-                  <p className="text-sm whitespace-pre-line">{q.q}</p>
-                  {q.ex && <p className="text-xs mt-1" style={{ color: C.mute }}>{q.ex}</p>}
-                  {q.hint && <p className="text-xs mt-1" style={{ color: C.mute }}>{q.hint}</p>}
-                </div>
-                {q.quick && <div className="flex flex-wrap gap-1.5">{q.quick.map((o) => <button key={o} onClick={() => answer(o)} className="text-xs px-2.5 py-1 rounded-sm" style={{ border: `1px solid ${C.line}`, background: "#fff" }}>{o}</button>)}</div>}
-                <div className="flex gap-2">
-                  <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && answer(text)} placeholder={(inIntro ? intro[q.key] : cur[q.key]) || "여기에 입력하고 Enter"} className="flex-1 text-sm px-2.5 py-2 rounded-sm" style={{ border: `1px solid ${C.line}` }} />
-                  <Btn primary small onClick={() => answer(text)}>답변</Btn>
-                </div>
-                <div className="flex justify-between">
-                  <Btn small onClick={back} disabled={inIntro && ii === 0}>← 이전 질문</Btn>
-                  {!inIntro && cur[q.key] && <Btn small onClick={() => setQi(qi + 1)}>건너뛰기 (기존 답 유지) →</Btn>}
-                </div>
-              </div>
-            )}
-          </Card>
-
-          {!inIntro && answered.length > 0 && (
-            <Card title="지금까지 답변 — 고칠 항목을 누르세요">
-              <ul className="text-xs divide-y" style={{ borderColor: C.line }}>
-                {answered.map(([k, v]) => (
-                  <li key={k} className="py-1.5 flex items-start justify-between gap-2">
-                    <span style={{ color: C.mute, minWidth: 84 }}>{k === "__provYN" ? "외부 제공" : k}</span>
-                    <span className="flex-1">{v}</span>
-                    <button onClick={() => jump(k)} className="text-xs px-1.5 py-0.5 rounded-sm shrink-0" style={{ border: `1px solid ${C.line}`, color: C.steel }}>수정</button>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
-        </div>
-
-        <div className="space-y-3">
-          <Card title={`입력한 업무 ${tasks.length}건`}>
-            {tasks.length === 0 ? <p className="text-xs" style={{ color: C.mute }}>아직 저장한 업무가 없습니다.</p> : (
-              <ul className="text-xs divide-y" style={{ borderColor: C.line }}>
-                {tasks.map((t, i) => (
-                  <li key={i} className="py-1.5 flex items-center justify-between gap-2">
-                    <span className="flex-1">{t.업무명}</span>
-                    <button onClick={() => openTask(i)} className="px-1.5 py-0.5 rounded-sm" style={{ border: `1px solid ${C.line}`, color: C.steel }}>수정</button>
-                    <button onClick={() => delTask(i)} className="px-1.5 py-0.5 rounded-sm" style={{ border: `1px solid ${C.line}`, color: "#B23A3A" }}>삭제</button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <div className="mt-3 flex flex-col gap-2">
-              <Btn small primary onClick={submit}>정보보호부문에 제출</Btn>
-              <Btn small onClick={saveJson}>JSON으로 저장</Btn>
-            </div>
-            <p className="text-xs mt-2" style={{ color: C.mute }}>{intro.부서 || "부서 미입력"} · {intro.담당자 || "담당자 미입력"} — 입력 중인 내용은 이 브라우저에 자동 저장됩니다.</p>
-          </Card>
-        </div>
       </div>
     </div>
   );
