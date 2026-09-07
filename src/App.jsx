@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { C, store, audit, ACTION_LABEL, pad, nowStr, setUser, Tag, Btn, Card, Bar } from "./common.jsx";
-import PiaTool, { EmpPia } from "./Pia.jsx";
+import PiaTool from "./Pia.jsx";
+import EmpPia from "./EmpPia.jsx";
 import { BarChart, Bar as RBar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 /* ─────────────── 영역·활동 데이터 (인증 요구 활동 기준) ─────────────── */
@@ -1029,16 +1030,16 @@ export default function App() {
   const [page, setPage] = useState("overview");
   const [std, setStd] = useState("ALL");
   const [requests, setRequests] = useState(INIT_REQUESTS);
-  const nav = [["overview", "현황"], ["calendar", "일정·브리프"], ["inbox", "요청함"], ["pia", "개인정보 흐름도"], ["audit", "로그점검"], ["claude", "Claude"]];
+  const nav = [["overview", "현황"], ["calendar", "일정·브리프"], ["inbox", "요청함"], ["audit", "로그점검"], ["claude", "Claude"]];
   const open = requests.filter((r) => ["접수", "처리중"].includes(r.status)).length;
   const switchRole = (r) => { setUser(r === "employee" ? "김개발" : "이정민"); audit("login", "보안포털", { how: `${r === "employee" ? "임직원" : "정보보호부문"} 역할로 접속` }); setRole(r); setPage(r === "employee" ? "ehome" : "overview"); };
   const isEmp = role === "employee";
   const body = isEmp
     ? page === "policies" ? <EmpPolicies /> : page === "requests" ? <EmpRequests requests={requests} setRequests={setRequests} /> : page === "epia" ? <EmpPia /> : page === "training" ? <EmpTraining /> : <EmpHome requests={requests} go={setPage} />
-    : page === "overview" ? <Overview go={setPage} std={std} setStd={setStd} /> : page === "calendar" ? <Calendar go={setPage} /> : page === "inbox" ? <Inbox requests={requests} setRequests={setRequests} go={setPage} /> : page === "pia" ? <PiaTool /> : page === "audit" ? <AuditPage /> : page === "claude" ? <ClaudePanel /> : <Domain key={page + std} code={page} std={std} go={setPage} />;
+    : page === "overview" ? <Overview go={setPage} std={std} setStd={setStd} /> : page === "calendar" ? <Calendar go={setPage} /> : page === "inbox" ? <Inbox requests={requests} setRequests={setRequests} go={setPage} /> : page === "pia" ? <PiaTool go={setPage} /> : page === "audit" ? <AuditPage /> : page === "claude" ? <ClaudePanel /> : <Domain key={page + std} code={page} std={std} go={setPage} />;
   const [menu, setMenu] = useState(false);
   const goPage = (k) => { setPage(k); setMenu(false); };
-  const title = isEmp ? (EMP_NAV.find(([k]) => k === page) || [])[1] : (nav.find(([k]) => k === page) || [])[1] || DOMAINS.find((d) => d.code === page)?.name || "";
+  const title = isEmp ? (EMP_NAV.find(([k]) => k === page) || [])[1] : page === "pia" ? "개인정보 흐름도·영향평가" : (nav.find(([k]) => k === page) || [])[1] || DOMAINS.find((d) => d.code === page)?.name || "";
   return (
     <div className="min-h-screen flex flex-col md:flex-row" style={{ background: C.bg, color: C.ink, fontFamily: "Pretendard, 'Apple SD Gothic Neo', 'Noto Sans KR', system-ui, sans-serif" }}>
       <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
