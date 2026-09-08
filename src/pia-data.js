@@ -15,6 +15,10 @@ export const SUBJECT_DUTY = {
   "기타": "수집 근거와 대상을 별도로 확인",
 };
 
+export const ORG_TYPES = ["민간기업", "공공기관"];
+/* 공공기관만 해당하는 평가분야 — 민간기업이면 자동 '해당없음' */
+export const PUBLIC_ONLY = ["2.4"];
+
 export const CONSENT_TYPES = ["동의 없이 수집(법령 근거)", "동의받아 수집"];
 export const COLL_COLS = [
   { k: "업무명", l: "평가업무명", w: 110 },
@@ -109,7 +113,7 @@ export const newRow = (cols) => Object.fromEntries(cols.map((c) => [c.k, ""]));
 
 export const blankPia = () => ({
   project: {
-    orgName: "CCK솔루션", systemName: "", evalPurpose: "", evalPeriod: "", systemType: "신규구축",
+    orgName: "CCK솔루션", orgType: "민간기업", systemName: "", evalPurpose: "", evalPeriod: "", systemType: "신규구축",
     dataSubject: "", personalDataCount: "", sensitivData: "없음", thirdPartyProvision: "없음",
     aiSystem: "없음", evalTeam: "", background: "",
   },
