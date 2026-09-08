@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { C, store, audit, Tag, Btn, Card } from "./common.jsx";
-import { COLL_COLS, RET_COLS, PROV_COLS, IMP_COLS, RISK_ITEMS, RISK_LEVELS, RISK_COLOR, RISK_FILL_DOCX, STEPS, newRow, blankPia, tasksToRows, SENS_RE } from "./pia-data.js";
+import { COLL_COLS, RET_COLS, PROV_COLS, IMP_COLS, RISK_ITEMS, RISK_LEVELS, RISK_COLOR, RISK_FILL_DOCX, STEPS, newRow, blankPia, tasksToRows, SENS_RE, SUBJECT_TYPES, SUBJECT_GROUP, SUBJECT_COLOR, SUBJECT_DUTY } from "./pia-data.js";
 import { flowDiagramSVG } from "./pia-flow.js";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -65,7 +65,10 @@ function StatsPanel({ s }) {
     const missing = [];
     coll.forEach((r) => { const m = []; ["수집근거", "수집항목", "수집목적"].forEach((k) => { if (!r[k]) m.push(k); }); if (m.length) missing.push(`${r.업무명}: ${m.join("·")}`); });
     prov.forEach((r) => { if (!r.보관기간) missing.push(`${r.업무명}: 보관기간`); });
-    return { tasks, byDept, sens: [...new Set(sens)], provT: [...new Set(provT)], enc: [...new Set(enc)], missing };
+    const bySubj = {}; coll.forEach((r) => { const t = r.정보주체유형 || "(미분류)"; bySubj[t] = (bySubj[t] || 0) + 1; });
+    const noSubj = coll.filter((r) => !r.정보주체유형).map((r) => r.업무명);
+    const groups = [...new Set(coll.filter((r) => r.정보주체유형).map((r) => SUBJECT_GROUP[r.정보주체유형]))];
+    return { tasks, byDept, bySubj, noSubj: [...new Set(noSubj)], groups, sens: [...new Set(sens)], provT: [...new Set(provT)], enc: [...new Set(enc)], missing };
   }, [s]);
   if (!st.tasks.length) return null;
   const risk = st.sens.filter((t) => !st.enc.includes(t));
@@ -82,6 +85,24 @@ function StatsPanel({ s }) {
           {st.missing.length > 0 && <div style={{ color: C.mute }}>필수 항목 미입력 {st.missing.length}건 — {st.missing.slice(0, 4).join(" / ")}{st.missing.length > 4 ? " 외" : ""}</div>}
         </div>
       )}
+      {Object.keys(st.bySubj).length > 0 && (
+        <div className="col-span-2 md:col-span-4 text-xs flex flex-wrap gap-1.5 items-center">
+          <span style={{ color: C.mute }}>정보주체별</span>
+          {Object.entries(st.bySubj).map(([t, n]) => <Tag key={t} color={t === "(미분류)" ? "#B23A3A" : SUBJECT_COLOR[SUBJECT_GROUP[t]] || C.mute}>{t} {n}</Tag>)}
+        </div>
+      )}
+      {st.noSubj.length > 0 && (
+        <div className="col-span-2 md:col-span-4 text-xs px-3 py-2.5" style={{ background: "#FFF7F7", border: `1px solid #F0D5D5`, borderRadius: 6 }}>
+          <b style={{ color: "#B23A3A" }}>정보주체 유형이 비어 있는 업무 {st.noSubj.length}건</b> — {st.noSubj.slice(0, 5).join(", ")}{st.noSubj.length > 5 ? " 외" : ""}
+          <div style={{ color: C.mute }}>유형을 채워야 어느 처리방침에 넣을지, 어떤 의무가 붙는지 판단됩니다.</div>
+        </div>
+      )}
+      {st.groups.length > 0 && (
+        <div className="col-span-2 md:col-span-4 text-xs px-3 py-2.5 space-y-1" style={{ background: "#F7FAFD", border: `1px solid #D9E4EF`, borderRadius: 6 }}>
+          <div style={{ color: C.steel }}><b>필요한 처리방침 {st.groups.length}종</b> — {st.groups.map((g) => (g === "임직원" ? "임직원 처리방침(사내 게시)" : g === "이용자" ? "이용자 처리방침(홈페이지)" : g === "거래처" ? "거래처 담당자 안내" : "기타")).join(" / ")}</div>
+          <div style={{ color: C.mute }}>V02 처리방침 활동에서 수립·공개 여부를 관리하세요.</div>
+        </div>
+      )}
       {Object.keys(st.byDept).length > 0 && (
         <div className="col-span-2 md:col-span-4 text-xs flex flex-wrap gap-1.5">
           <span style={{ color: C.mute }}>부서별</span>{Object.entries(st.byDept).map(([d, n]) => <Tag key={d}>{d} {n}</Tag>)}
@@ -94,20 +115,23 @@ function StatsPanel({ s }) {
 /* ─────────────── 흐름도 화면 ─────────────── */
 function FlowView({ s }) {
   const tasks = useMemo(() => [...new Set([...s.collection, ...s.retention, ...s.provision].filter((r) => r.업무명).map((r) => r.업무명))], [s]);
+  const subjects = useMemo(() => [...new Set(s.collection.filter((r) => r.정보주체유형).map((r) => r.정보주체유형))], [s]);
   const [sel, setSel] = useState("__ALL__");
+  const [subj, setSubj] = useState("__ALL__");
   const task = sel === "__ALL__" ? null : sel;
-  const svg = useMemo(() => flowDiagramSVG(s, task), [s, task]);
+  const subject = subj === "__ALL__" ? null : subj;
+  const svg = useMemo(() => flowDiagramSVG(s, task, subject), [s, task, subject]);
   const wrap = useRef(null);
 
-  const saveSvg = () => { if (!svg) return; dl(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }), `pia_flowmap_${task ? "task" : "all"}_${today()}.svg`); audit("pia_export", "V01", { how: "흐름도 SVG 내보내기", note: task || "총괄" }); };
+  const saveSvg = () => { if (!svg) return; dl(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }), `pia_flowmap_${task ? "task" : subject ? "subject" : "all"}_${today()}.svg`); audit("pia_export", "V01", { how: "흐름도 SVG 내보내기", note: task || subject || "총괄" }); };
   const savePng = () => {
     if (!svg) return;
     const img = new Image();
     img.onload = () => {
       const cv = document.createElement("canvas"); cv.width = img.width * 2; cv.height = img.height * 2;
       const g = cv.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(img, 0, 0, cv.width, cv.height);
-      cv.toBlob((b) => dl(b, `pia_flowmap_${task ? "task" : "all"}_${today()}.png`));
-      audit("pia_export", "V01", { how: "흐름도 PNG 내보내기", note: task || "총괄" });
+      cv.toBlob((b) => dl(b, `pia_flowmap_${task ? "task" : subject ? "subject" : "all"}_${today()}.png`));
+      audit("pia_export", "V01", { how: "흐름도 PNG 내보내기", note: task || subject || "총괄" });
     };
     img.src = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
   };
@@ -115,8 +139,12 @@ function FlowView({ s }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
+        <select value={subj} onChange={(e) => { setSubj(e.target.value); setSel("__ALL__"); audit("pia_flow", "V01", { how: "흐름도 정보주체 필터", note: e.target.value === "__ALL__" ? "전체" : e.target.value }); }} className="text-sm px-2 py-1.5 rounded-sm" style={{ border: `1px solid ${C.line}` }}>
+          <option value="__ALL__">정보주체 전체</option>
+          {subjects.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
         <select value={sel} onChange={(e) => { setSel(e.target.value); audit("pia_flow", "V01", { how: "흐름도 생성", note: e.target.value === "__ALL__" ? "총괄" : e.target.value }); }} className="text-sm px-2 py-1.5 rounded-sm" style={{ border: `1px solid ${C.line}` }}>
-          <option value="__ALL__">총괄 흐름도 (전체 업무)</option>
+          <option value="__ALL__">업무 전체</option>
           {tasks.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
         <Btn small onClick={saveSvg} disabled={!svg}>SVG 저장</Btn>
@@ -129,7 +157,10 @@ function FlowView({ s }) {
             <span><span className="inline-block w-6 align-middle" style={{ borderTop: `2px solid ${C.mute}` }} /> 온라인(실선)</span>
             <span><span className="inline-block w-6 align-middle" style={{ borderTop: `2px dashed ${C.mute}` }} /> 오프라인(점선)</span>
             <span><span className="inline-block w-6 align-middle" style={{ borderTop: "3px solid #B23A3A" }} /> 암호화·보호전송</span>
-            <span>흰색 정보주체 · 회색 취급부서 · 노랑 외부기관</span>
+            <span className="flex items-center gap-2">정보주체:
+              {Object.entries(SUBJECT_COLOR).map(([g, c]) => <span key={g} className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: c + "33", border: `1px solid ${c}` }} />{g}</span>)}
+            </span>
+            <span>회색 취급부서 · 노랑 외부기관</span>
           </div>
         </>
       ) : (
@@ -152,7 +183,7 @@ function RiskView({ s, onChange }) {
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <Tag color={C.steel}>평가 {done}/{RISK_ITEMS.length}</Tag>
         <Tag color={bad.length ? "#B23A3A" : "#2E7D5B"}>미이행·부분이행 {bad.length}</Tag>
-        <span style={{ color: C.mute }}>미이행·부분이행 항목은 7단계 개선계획으로 자동 넘길 수 있습니다.</span>
+        <span style={{ color: C.mute }}>개인정보 영향평가 수행안내서(2025.10) 5개 평가영역 기준. 미이행·부분이행 항목은 7단계 개선계획으로 자동 넘길 수 있습니다.</span>
       </div>
       {areas.map((a) => (
         <div key={a} className="bg-white" style={{ border: `1px solid ${C.line}`, borderRadius: 6 }}>
@@ -162,7 +193,10 @@ function RiskView({ s, onChange }) {
               const v = s.risks[r.code] || {};
               return (
                 <div key={r.code} className="px-3 py-2 grid grid-cols-1 md:grid-cols-12 gap-2 items-start">
-                  <div className="md:col-span-4 text-sm"><span className="text-xs mr-1.5" style={{ color: C.mute }}>{r.code}</span>{r.item}{r.act && <span className="ml-1.5"><Tag>{r.act}</Tag></span>}</div>
+                  <div className="md:col-span-4 text-sm">
+                    <div><span className="text-xs mr-1.5" style={{ color: C.mute }}>{r.code}</span>{r.item}{r.act && <span className="ml-1.5"><Tag>{r.act}</Tag></span>}{r.cond && <span className="ml-1.5"><Tag color="#B7791F">{r.cond}</Tag></span>}</div>
+                    {r.sub && <div className="text-xs mt-0.5" style={{ color: C.mute }}>{r.sub}</div>}
+                  </div>
                   <div className="md:col-span-3 flex gap-1 flex-wrap">
                     {RISK_LEVELS.map((lv) => (
                       <button key={lv} onClick={() => { set(r.code, "level", lv); audit("pia_risk", r.code, { how: `침해요인 평가 ${lv}`, before: v.level || "미평가", after: lv, note: r.item }); }}
@@ -238,8 +272,8 @@ export default function PiaTool({ go }) {
     const body = ["\ufeff개인정보 흐름표 — " + (s.project.systemName || "미입력") + " / " + today(), "",
       sec("[수집]", COLL_COLS, s.collection), sec("[보유·이용]", RET_COLS, s.retention), sec("[제공·파기]", PROV_COLS, s.provision),
       sec("[개선계획]", IMP_COLS, s.improvement),
-      "[침해요인]", "코드,영역,평가항목,평가,메모",
-      ...RISK_ITEMS.map((r) => [r.code, r.area, r.item, s.risks[r.code]?.level || "", s.risks[r.code]?.memo || ""].map(csvCell).join(",")),
+      "[침해요인]", "코드,평가영역,평가분야,세부분야,조건,평가,메모",
+      ...RISK_ITEMS.map((r) => [r.code, r.area, r.item, r.sub || "", r.cond || "", s.risks[r.code]?.level || "", s.risks[r.code]?.memo || ""].map(csvCell).join(",")),
     ].join("\n");
     dl(new Blob([body], { type: "text/csv;charset=utf-8" }), `pia_flowtable_${today()}.csv`);
     audit("pia_export", "V01", { how: "흐름표 CSV 내보내기" });
@@ -289,8 +323,8 @@ export default function PiaTool({ go }) {
       kids.push(h("6. 침해요인 분석"));
       kids.push(new Table({
         width: { size: 100, type: WidthType.PERCENTAGE },
-        rows: [new TableRow({ children: [cell("코드", true), cell("영역", true), cell("평가항목", true), cell("평가", true), cell("현황·메모", true)] }),
-        ...RISK_ITEMS.map((r) => { const v = s.risks[r.code] || {}; return new TableRow({ children: [cell(r.code), cell(r.area), cell(r.item), cell(v.level || "미평가", false, RISK_FILL_DOCX[v.level]), cell(v.memo || "")] }); })],
+        rows: [new TableRow({ children: [cell("코드", true), cell("평가영역", true), cell("평가분야", true), cell("세부분야", true), cell("평가", true), cell("현황·메모", true)] }),
+        ...RISK_ITEMS.map((r) => { const v = s.risks[r.code] || {}; return new TableRow({ children: [cell(r.code), cell(r.area), cell(r.item), cell(r.sub || ""), cell(v.level || "미평가", false, RISK_FILL_DOCX[v.level]), cell(v.memo || "")] }); })],
       }));
       kids.push(h("7. 개선계획"), table(IMP_COLS, s.improvement));
       const doc = new Document({ sections: [{ children: kids }] });
@@ -369,7 +403,17 @@ export default function PiaTool({ go }) {
         </div>
       )}
 
-      {sid === "collection" && <TableEditor rows={s.collection} cols={COLL_COLS} onChange={(r) => { upd({ ...s, collection: r }); audit("pia_save", "V01", { how: "수집 흐름표 편집" }); }} />}
+      {sid === "collection" && (
+        <div className="space-y-3">
+          <div className="text-xs px-3 py-2.5 space-y-1" style={{ background: "#F7FAFD", border: `1px solid #D9E4EF`, borderRadius: 6 }}>
+            <div style={{ color: C.steel }}><b>정보주체 유형을 반드시 채우세요.</b> 유형에 따라 적용 법령과 처리방침이 갈립니다.</div>
+            {[...new Set(s.collection.map((r) => r.정보주체유형).filter(Boolean))].map((t) => (
+              <div key={t} style={{ color: C.mute }}><span style={{ color: SUBJECT_COLOR[SUBJECT_GROUP[t]] }}>{t}</span> — {SUBJECT_DUTY[t]}</div>
+            ))}
+          </div>
+          <TableEditor rows={s.collection} cols={COLL_COLS} onChange={(r) => { upd({ ...s, collection: r }); audit("pia_save", "V01", { how: "수집 흐름표 편집" }); }} />
+        </div>
+      )}
       {sid === "retention" && <TableEditor rows={s.retention} cols={RET_COLS} onChange={(r) => { upd({ ...s, retention: r }); audit("pia_save", "V01", { how: "보유·이용 흐름표 편집" }); }} />}
       {sid === "provision" && <TableEditor rows={s.provision} cols={PROV_COLS} onChange={(r) => { upd({ ...s, provision: r }); audit("pia_save", "V01", { how: "제공·파기 흐름표 편집" }); }} />}
       {sid === "flowmap" && <FlowView s={s} />}
