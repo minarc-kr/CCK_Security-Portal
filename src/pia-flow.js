@@ -7,33 +7,45 @@ const cut = (s, n) => (String(s || "").length > n ? String(s).slice(0, n - 1) + 
 const has = (v) => v && !/^(없음|없|해당없음|모르겠음|미상|x|-)$/i.test(String(v).trim());
 const uniq = (a) => [...new Set(a.filter(Boolean))];
 
+import { SUBJECT_GROUP, SUBJECT_COLOR } from "./pia-data.js";
+
 const LC = ["수집", "보유", "이용·제공", "파기"];
 const LCC = { 수집: "#2E5C8A", 보유: "#6D5BA8", "이용·제공": "#2E7D5B", 파기: "#B7791F" };
 
-export function buildFlowData(state, task) {
-  const f = (rows) => (rows || []).filter((r) => r.업무명 && (!task || r.업무명 === task));
+export function buildFlowData(state, task, subject) {
+  // subject(정보주체 유형)로 거르면 해당 유형 업무만 남긴다
+  const subjTasks = subject ? new Set((state.collection || []).filter((r) => (r.정보주체유형 || "(미분류)") === subject).map((r) => r.업무명)) : null;
+  const f = (rows) => (rows || []).filter((r) => r.업무명 && (!task || r.업무명 === task) && (!subjTasks || subjTasks.has(r.업무명)));
   const coll = f(state.collection), ret = f(state.retention), prov = f(state.provision);
   const tasks = uniq([...coll, ...ret, ...prov].map((r) => r.업무명));
   const handlers = uniq([...coll.map((r) => r.수집담당자), ...ret.map((r) => r.개인정보취급자), ...prov.map((r) => r.제공자)]);
   const externals = uniq(prov.map((r) => r.수신자));
-  return { coll, ret, prov, tasks, handlers, externals };
+  const subjects = uniq(coll.map((r) => r.정보주체유형 || "(미분류)"));
+  return { coll, ret, prov, tasks, handlers, externals, subjects };
 }
 
-export function flowDiagramSVG(state, task) {
-  const d = buildFlowData(state, task);
+export function flowDiagramSVG(state, task, subject) {
+  const d = buildFlowData(state, task, subject);
   if (!d.tasks.length) return null;
 
   const handlers = (d.handlers.length ? d.handlers : ["담당부서"]).slice(0, 4);
   const externals = d.externals.slice(0, 4);
-  const cols = [{ t: "정보주체", type: "subject" }, ...handlers.map((t) => ({ t, type: "handler" })), ...externals.map((t) => ({ t, type: "external" }))];
+  // 정보주체 열은 유형별로 나눈다 (임직원 / 이용자 / 거래처 …)
+  const subjects = (d.subjects.length ? d.subjects : ["정보주체"]).slice(0, 4);
+  // 수집 연결선 경로를 먼저 세어 헤더 아래 여유 폭을 정한다 (헤더 침범 방지)
+  const routeCount = handlers.reduce((n, h) => n + Math.max(1, new Set(d.coll.filter((r) => (r.수집담당자 || handlers[0]) === h).map((r) => r.정보주체유형 || "(미분류)")).size), 0);
+  const band = Math.min(96, 20 + routeCount * 11);
+  const cols = [...subjects.map((t) => ({ t, type: "subject" })), ...handlers.map((t) => ({ t, type: "handler" })), ...externals.map((t) => ({ t, type: "external" }))];
+  const sIdx = (name) => Math.max(0, subjects.indexOf(name));
 
-  const colW = Math.max(160, Math.min(230, Math.floor(1000 / cols.length)));
-  const padL = 92, titleH = 34, headY = titleH + 8, headH = 42, padT = headY + headH + 48, rowH = 126;
+  const colW = Math.max(160, Math.min(230, Math.floor(1100 / cols.length)));
+  const padL = 92, titleH = 34, headY = titleH + 8, headH = 42, rowH = 126;
+  const padT = headY + headH + band;
   const W = padL + cols.length * colW + 24;
   const H = padT + LC.length * rowH + 30;
   const colX = (ci) => padL + ci * colW + colW / 2;
-  const hIdx = (name) => 1 + handlers.indexOf(name);
-  const eIdx = (name) => 1 + handlers.length + externals.indexOf(name);
+  const hIdx = (name) => subjects.length + handlers.indexOf(name);
+  const eIdx = (name) => subjects.length + handlers.length + externals.indexOf(name);
 
   const rowsOf = (rows, h, key) => rows.filter((r) => (r[key] || handlers[0]) === h);
 
@@ -41,8 +53,9 @@ export function flowDiagramSVG(state, task) {
   s += `<rect width="${W}" height="${H}" fill="#ffffff"/>`;
   s += `<defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6B7686"/></marker>`;
   s += `<marker id="arE" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#B23A3A"/></marker></defs>`;
-  s += `<text x="14" y="23" font-size="14" font-weight="700" fill="#1B2432">${esc(task ? `개인정보 흐름도 — ${cut(task, 30)}` : "총괄 개인정보 흐름도")}</text>`;
-  s += `<text x="${W - 14}" y="23" text-anchor="end" font-size="10" fill="#94A3B8">업무 ${d.tasks.length}건 · 부서 ${handlers.length} · 외부 ${externals.length}</text>`;
+  const title = task ? `개인정보 흐름도 — ${cut(task, 26)}` : subject ? `개인정보 흐름도 — ${subject}` : "총괄 개인정보 흐름도";
+  s += `<text x="14" y="23" font-size="14" font-weight="700" fill="#1B2432">${esc(title)}</text>`;
+  s += `<text x="${W - 14}" y="23" text-anchor="end" font-size="10" fill="#94A3B8">업무 ${d.tasks.length}건 · 정보주체 ${subjects.length} · 부서 ${handlers.length} · 외부 ${externals.length}</text>`;
 
   LC.forEach((lc, r) => {
     const y = padT + r * rowH;
@@ -53,11 +66,12 @@ export function flowDiagramSVG(state, task) {
 
   cols.forEach((c, ci) => {
     const x = padL + ci * colW;
-    const fill = c.type === "subject" ? "#fff" : c.type === "external" ? "#FDF6DA" : "#F1F5F9";
-    const stroke = c.type === "external" ? "#C9A227" : "#94A3B8";
+    const sc = c.type === "subject" ? (SUBJECT_COLOR[SUBJECT_GROUP[c.t]] || "#6B7686") : null;
+    const fill = c.type === "subject" ? sc + "14" : c.type === "external" ? "#FDF6DA" : "#F1F5F9";
+    const stroke = c.type === "subject" ? sc + "AA" : c.type === "external" ? "#C9A227" : "#94A3B8";
     s += `<rect x="${x + 8}" y="${headY}" width="${colW - 16}" height="${headH}" rx="7" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>`;
     s += `<text x="${x + colW / 2}" y="${headY + 19}" text-anchor="middle" font-size="11.5" font-weight="600" fill="#334155">${esc(cut(c.t, 14))}</text>`;
-    s += `<text x="${x + colW / 2}" y="${headY + 33}" text-anchor="middle" font-size="9" fill="#94A3B8">${c.type === "subject" ? "정보주체" : c.type === "external" ? "외부기관·수탁자" : "취급부서"}</text>`;
+    s += `<text x="${x + colW / 2}" y="${headY + 33}" text-anchor="middle" font-size="9" fill="#94A3B8">${c.type === "subject" ? "정보주체 · " + (SUBJECT_GROUP[c.t] || "기타") : c.type === "external" ? "외부기관·수탁자" : "취급부서"}</text>`;
     s += `<line x1="${x}" y1="${headY + headH + 4}" x2="${x}" y2="${H - 14}" stroke="#F5F7FA"/>`;
   });
 
@@ -85,10 +99,14 @@ export function flowDiagramSVG(state, task) {
   const yRow = (i) => padT + i * rowH + rowH / 2;
   const yC = yRow(0), yR = yRow(1), yP = yRow(2), yD = yRow(3);
 
-  // 정보주체
-  const subX = colX(0);
-  s += box(subX, yC, "정보주체", uniq(d.coll.map((r) => r.수집대상)).slice(0, 2).join(", ") || "수집대상", LCC["수집"] + "14", LCC["수집"] + "88");
+  // 정보주체 — 유형별 박스
+  subjects.forEach((sb, si) => {
+    const c = SUBJECT_COLOR[SUBJECT_GROUP[sb]] || "#6B7686";
+    const detail = uniq(d.coll.filter((r) => (r.정보주체유형 || "(미분류)") === sb).map((r) => r.수집대상)).slice(0, 2).join(", ");
+    s += box(colX(si), yC, sb, detail || "수집대상", c + "14", c + "88");
+  });
 
+  let lane = 0;
   handlers.forEach((h, k) => {
     const x = colX(hIdx(h));
     const cRows = rowsOf(d.coll, h, "수집담당자"), rRows = rowsOf(d.ret, h, "개인정보취급자"), pRows = rowsOf(d.prov, h, "제공자");
@@ -96,9 +114,12 @@ export function flowDiagramSVG(state, task) {
     if (!myTasks.length) return;
 
     // 수집: 정보주체 → 부서 (레인 위로 우회)
-    const items = uniq(cRows.map((r) => r.수집항목)).join(" / ") || "개인정보";
     const off = cRows.some((r) => /오프라인|서면|종이|대면|방문|우편|FAX|팩스/i.test(r.수집경로 || ""));
-    s += routed(subX, x, yC - BH / 2, padT - 14 - k * 11, items, { offline: off });
+    const mySubjects = uniq(cRows.map((r) => r.정보주체유형 || "(미분류)"));
+    (mySubjects.length ? mySubjects : [subjects[0]]).forEach((sb, si) => {
+      const items = uniq(cRows.filter((r) => (r.정보주체유형 || "(미분류)") === sb).map((r) => r.수집항목)).join(" / ") || "개인정보";
+      s += routed(colX(sIdx(sb)), x, yC - BH / 2, padT - 12 - (lane++) * 11, items, { offline: off });
+    });
     s += box(x, yC, myTasks.length === 1 ? myTasks[0] : `업무 ${myTasks.length}건`, cRows[0]?.수집경로 || h, "#F1F5F9", "#94A3B8");
 
     // 보유
