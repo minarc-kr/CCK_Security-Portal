@@ -27,7 +27,7 @@ export const ACTION_LABEL = {
   report: "리포트 출력", logcheck: "로그 점검 확인",
   pia_save: "개인정보 흐름표 저장", pia_flow: "개인정보 흐름도 생성", pia_risk: "침해요인 평가",
   pia_export: "개인정보 흐름도·평가 내보내기", pia_intake: "현업 개인정보 현황 입력 제출",
-  pia_import: "현업 입력 불러오기", pia_reset: "개인정보 흐름표 초기화",
+  pia_import: "현업 입력 불러오기", pia_reset: "개인정보 흐름표 초기화", policy_state: "처리방침 수립 상태 변경",
 };
 
 /* ─────────────── 공통 UI ─────────────── */
