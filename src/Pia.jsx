@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { C, store, audit, Tag, Btn, Card } from "./common.jsx";
-import { COLL_COLS, RET_COLS, PROV_COLS, IMP_COLS, RISK_ITEMS, RISK_LEVELS, RISK_COLOR, RISK_FILL_DOCX, STEPS, newRow, blankPia, tasksToRows, SENS_RE, SUBJECT_TYPES, SUBJECT_GROUP, SUBJECT_COLOR, SUBJECT_DUTY } from "./pia-data.js";
+import { COLL_COLS, RET_COLS, PROV_COLS, IMP_COLS, RISK_ITEMS, RISK_LEVELS, RISK_COLOR, RISK_FILL_DOCX, STEPS, newRow, blankPia, tasksToRows, SENS_RE, ORG_TYPES, PUBLIC_ONLY, SUBJECT_TYPES, SUBJECT_GROUP, SUBJECT_COLOR, SUBJECT_DUTY } from "./pia-data.js";
 import { flowDiagramSVG } from "./pia-flow.js";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -176,14 +176,18 @@ function FlowView({ s }) {
 function RiskView({ s, onChange }) {
   const set = (code, field, v) => onChange({ ...s, risks: { ...s.risks, [code]: { ...(s.risks[code] || {}), [field]: v } } });
   const areas = [...new Set(RISK_ITEMS.map((r) => r.area))];
-  const done = RISK_ITEMS.filter((r) => s.risks[r.code]?.level).length;
-  const bad = RISK_ITEMS.filter((r) => ["미이행", "부분이행"].includes(s.risks[r.code]?.level));
+  const isPublic = s.project.orgType === "공공기관";
+  const na = (code) => !isPublic && PUBLIC_ONLY.includes(code);
+  const applicable = RISK_ITEMS.filter((r) => !na(r.code));
+  const done = applicable.filter((r) => s.risks[r.code]?.level).length;
+  const bad = applicable.filter((r) => ["미이행", "부분이행"].includes(s.risks[r.code]?.level));
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <Tag color={C.steel}>평가 {done}/{RISK_ITEMS.length}</Tag>
+        <Tag color={C.steel}>평가 {done}/{applicable.length}</Tag>
         <Tag color={bad.length ? "#B23A3A" : "#2E7D5B"}>미이행·부분이행 {bad.length}</Tag>
-        <span style={{ color: C.mute }}>개인정보 영향평가 수행안내서(2025.10) 5개 평가영역 기준. 미이행·부분이행 항목은 7단계 개선계획으로 자동 넘길 수 있습니다.</span>
+        <span style={{ color: C.mute }}>개인정보 영향평가 수행안내서(2025.10) 5개 평가영역 29개 분야. 미이행·부분이행 항목은 7단계 개선계획으로 자동 넘길 수 있습니다.</span>
+        {!isPublic && <Tag color="#B7791F">민간기업 — 공공 전용 {PUBLIC_ONLY.length}개 분야 제외</Tag>}
       </div>
       {areas.map((a) => (
         <div key={a} className="bg-white" style={{ border: `1px solid ${C.line}`, borderRadius: 6 }}>
@@ -191,19 +195,21 @@ function RiskView({ s, onChange }) {
           <div className="divide-y" style={{ borderColor: C.line }}>
             {RISK_ITEMS.filter((r) => r.area === a).map((r) => {
               const v = s.risks[r.code] || {};
+              const off = na(r.code);
               return (
-                <div key={r.code} className="px-3 py-2 grid grid-cols-1 md:grid-cols-12 gap-2 items-start">
+                <div key={r.code} className="px-3 py-2 grid grid-cols-1 md:grid-cols-12 gap-2 items-start" style={off ? { opacity: 0.45 } : undefined}>
                   <div className="md:col-span-4 text-sm">
                     <div><span className="text-xs mr-1.5" style={{ color: C.mute }}>{r.code}</span>{r.item}{r.act && <span className="ml-1.5"><Tag>{r.act}</Tag></span>}{r.cond && <span className="ml-1.5"><Tag color="#B7791F">{r.cond}</Tag></span>}</div>
                     {r.sub && <div className="text-xs mt-0.5" style={{ color: C.mute }}>{r.sub}</div>}
                   </div>
                   <div className="md:col-span-3 flex gap-1 flex-wrap">
-                    {RISK_LEVELS.map((lv) => (
+                    {off && <Tag color={C.mute}>민간기업 해당없음</Tag>}
+                    {!off && RISK_LEVELS.map((lv) => (
                       <button key={lv} onClick={() => { set(r.code, "level", lv); audit("pia_risk", r.code, { how: `침해요인 평가 ${lv}`, before: v.level || "미평가", after: lv, note: r.item }); }}
                         className="text-xs px-2 py-1 rounded-sm" style={v.level === lv ? { background: RISK_COLOR[lv], color: "#fff" } : { border: `1px solid ${C.line}`, color: C.mute, background: "#fff" }}>{lv}</button>
                     ))}
                   </div>
-                  <div className="md:col-span-5"><input value={v.memo || ""} onChange={(e) => set(r.code, "memo", e.target.value)} placeholder="현황·근거 메모" className="w-full text-xs px-2 py-1.5 rounded-sm" style={{ border: `1px solid ${C.line}` }} /></div>
+                  <div className="md:col-span-5">{!off && <input value={v.memo || ""} onChange={(e) => set(r.code, "memo", e.target.value)} placeholder="현황·근거 메모" className="w-full text-xs px-2 py-1.5 rounded-sm" style={{ border: `1px solid ${C.line}` }} />}</div>
                 </div>
               );
             })}
@@ -255,7 +261,7 @@ export default function PiaTool({ go }) {
   };
 
   const fillImprovement = () => {
-    const bad = RISK_ITEMS.filter((r) => ["미이행", "부분이행"].includes(s.risks[r.code]?.level));
+    const bad = RISK_ITEMS.filter((r) => !(s.project.orgType !== "공공기관" && PUBLIC_ONLY.includes(r.code)) && ["미이행", "부분이행"].includes(s.risks[r.code]?.level));
     if (!bad.length) return note("미이행·부분이행 항목이 없습니다.");
     const have = new Set(s.improvement.map((r) => r.평가항목));
     const add = bad.filter((r) => !have.has(`${r.code} ${r.item}`)).map((r) => ({
@@ -303,14 +309,15 @@ export default function PiaTool({ go }) {
       const p = (t) => new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: t, size: 18, font: "맑은 고딕" })] });
       const pr = s.project;
       const kids = [
-        new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 300 }, children: [new TextRun({ text: "개인정보 흐름 분석 및 영향평가", bold: true, size: 36, font: "맑은 고딕" })] }),
+        new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 300 }, children: [new TextRun({ text: pr.orgType === "공공기관" ? "개인정보 흐름 분석 및 영향평가" : "개인정보 흐름 분석 및 위험평가", bold: true, size: 36, font: "맑은 고딕" })] }),
         p(`대상 시스템: ${pr.systemName || "미입력"}   /   기관: ${pr.orgName || "미입력"}`),
         p(`평가기간: ${pr.evalPeriod || "미입력"}   /   유형: ${pr.systemType}   /   작성일: ${today()}`),
         h("1. 사업 개요"),
         table([{ k: "항목", l: "항목", w: 100 }, { k: "내용", l: "내용", w: 300 }], [
           { 항목: "정보주체", 내용: pr.dataSubject }, { 항목: "처리 규모", 내용: pr.personalDataCount },
           { 항목: "민감정보 처리", 내용: pr.sensitivData }, { 항목: "제3자 제공", 내용: pr.thirdPartyProvision },
-          { 항목: "AI 시스템 포함", 내용: pr.aiSystem }, { 항목: "평가 목적", 내용: pr.evalPurpose },
+          { 항목: "AI 시스템 포함", 내용: pr.aiSystem }, { 항목: "기관 유형", 내용: pr.orgType },
+          { 항목: "평가 목적", 내용: pr.evalPurpose },
           { 항목: "평가팀", 내용: pr.evalTeam }, { 항목: "추진 배경", 내용: pr.background },
         ]),
         h("2. 수집 흐름표"), table(COLL_COLS, s.collection),
@@ -330,7 +337,7 @@ export default function PiaTool({ go }) {
       const doc = new Document({ sections: [{ children: kids }] });
       const blob = await Packer.toBlob(doc);
       dl(blob, `pia_report_${today()}.docx`);
-      audit("pia_export", "V06", { how: "영향평가서 docx 내보내기", note: pr.systemName || "" });
+      audit("pia_export", "V06", { how: (pr.orgType === "공공기관" ? "영향평가서" : "위험평가서") + " docx 내보내기", note: pr.systemName || "" });
       note("Word 문서를 내려받았습니다.");
     } catch (e) { note("문서 생성 실패: " + e.message); }
     setBusy(false);
@@ -357,9 +364,9 @@ export default function PiaTool({ go }) {
         <div>
           {go && <button onClick={() => go("D07")} className="text-xs mb-1.5" style={{ color: C.steel }}>← 개인정보보호</button>}
           <h1 className="text-xl font-semibold">개인정보 흐름도·영향평가</h1>
-          <div className="text-xs mt-1" style={{ color: C.mute }}>V01 처리현황·흐름도 관리 · V06 개인정보 영향평가 — 개인정보보호법 33조, ISMS-P 3.2.1</div>
+          <div className="text-xs mt-1" style={{ color: C.mute }}>V01 처리현황·흐름도 관리 · V06 개인정보 위험평가 — ISMS-P 3.2.1·1.2.3, ISO 42001 A.7. 양식은 개인정보 영향평가 수행안내서(2025.10) 기준</div>
         </div>
-        <div className="flex gap-2"><Btn small onClick={exportCsv}>흐름표 CSV</Btn><Btn small primary onClick={exportDocx} disabled={busy}>{busy ? "생성 중…" : "영향평가서 Word"}</Btn><Btn small onClick={reset}>초기화</Btn></div>
+        <div className="flex gap-2"><Btn small onClick={exportCsv}>흐름표 CSV</Btn><Btn small primary onClick={exportDocx} disabled={busy}>{busy ? "생성 중…" : s.project.orgType === "공공기관" ? "영향평가서 Word" : "위험평가서 Word"}</Btn><Btn small onClick={reset}>초기화</Btn></div>
       </div>
 
       <div className="flex flex-wrap gap-1.5">
@@ -387,6 +394,7 @@ export default function PiaTool({ go }) {
               {field("orgName", "기관·회사명", "예: CCK솔루션")}
               {field("systemName", "대상 시스템명", "예: AI 업무 플랫폼")}
               {field("evalPeriod", "평가기간", "예: 2026.09 ~ 2026.10")}
+              {field("orgType", "기관 유형", "", ORG_TYPES)}
               {field("systemType", "시스템 유형", "", ["신규구축", "기존변경", "운영중"])}
               {field("dataSubject", "정보주체", "예: 임직원, 고객, 지원자")}
               {field("personalDataCount", "처리 규모", "예: 약 5만 명")}
