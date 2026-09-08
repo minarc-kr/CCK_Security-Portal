@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { C, store, audit, ACTION_LABEL, pad, nowStr, setUser, Tag, Btn, Card, Bar } from "./common.jsx";
 import PiaTool from "./Pia.jsx";
 import EmpPia from "./EmpPia.jsx";
+import PolicyPanel from "./PolicyPanel.jsx";
 import { BarChart, Bar as RBar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 /* ─────────────── 영역·활동 데이터 (인증 요구 활동 기준) ─────────────── */
@@ -622,6 +623,7 @@ function Domain({ code, std, go }) {
                     </tbody></table>
                   </div>
                 )}
+                {x.code === "V02" && <PolicyPanel />}
                 {["V01", "V06"].includes(x.code) && (
                   <div className="px-3 py-2.5 rounded-sm" style={{ background: "#EEF3F9", border: `1px solid #D3E0EE` }}>
                     <div className="text-xs mb-1.5" style={{ color: C.steel }}>이 활동은 포털 도구로 수행합니다</div>
