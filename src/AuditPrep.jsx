@@ -1,10 +1,13 @@
-import { useState, useMemo } from "react";
-import { C, store, audit, nowStr, getUser, Tag, Btn, Card } from "./common.jsx";
-import { STD, STD_LABEL, DOMAINS, ACTS, METHODS, TODAY, SRC, ST, applyActivityOverrides } from "./acts-data.js";
+import { useState, useEffect } from "react";
+import { C, audit, nowStr, getUser, getUserId, Tag, Btn, Card } from "./common.jsx";
+import { STD, STD_LABEL, DOMAINS, ACTS, METHODS, TODAY as SAMPLE_TODAY, SRC, ST } from "./acts-data.js";
+import * as repo from "./repo.js";
 
 /* 감사 대응 — 활동 수행·증빙 기록(D10 U04 연계), 지적사항 추적, 기준별 심사 대응 패키지
-   DB 연결 전에는 브라우저 저장소(sp.acts, sp.findings)에 두고, 실운영에서는
-   activity_runs·evidences·findings 테이블로 옮긴다. */
+   저장은 repo.js가 맡는다: DB 연결 시 activity_runs·evidences·findings, 데모 모드는 브라우저 저장소. */
+
+// 데모 모드는 샘플 데이터 기준일, DB 모드는 실제 오늘
+const TODAY = repo.mode === "db" ? repo.today() : SAMPLE_TODAY;
 
 const dl = (blob, name) => {
   const u = URL.createObjectURL(blob);
@@ -37,48 +40,41 @@ export function evidenceGap(x) {
 }
 
 /* ─────────────── 활동 상세: 상태 변경·수행 기록·증빙 등록 ─────────────── */
-function saveAct(code, patch) {
-  const all = store.get("acts", {});
-  all[code] = { ...(all[code] || {}), ...patch };
-  store.set("acts", all);
-  applyActivityOverrides(all);
-}
-
 export function ActivityLog({ act, onChange }) {
-  const saved = store.get("acts", {})[act.code] || {};
   const [tab, setTab] = useState(null);
   const [st, setSt] = useState({ status: act.status, why: "" });
   const [run, setRun] = useState({ date: TODAY, result: "", note: "" });
   const [ev, setEv] = useState({ title: "", period: TODAY.slice(0, 7), src: "manual", url: "" });
   const [err, setErr] = useState("");
-  const done = (msg) => { setErr(""); setTab(null); onChange?.(); if (msg) setErr(msg); };
+  const [busy, setBusy] = useState(false);
+  const done = () => { setErr(""); setTab(null); onChange?.(); };
+  // 저장이 성공해야 감사로그를 남긴다
+  const run1 = async (fn) => { setBusy(true); try { await fn(); return true; } catch (e) { setErr(`저장 실패: ${e.message}`); return false; } finally { setBusy(false); } };
 
-  const saveStatus = () => {
+  const saveStatus = async () => {
     if (st.status === act.status) return setErr("상태가 바뀌지 않았습니다.");
     if (!st.why.trim()) return setErr("변경 사유를 적어야 합니다 (심사 시 근거로 제시).");
     const before = act.status;
-    saveAct(act.code, { status: st.status });
+    if (!(await run1(() => repo.setStatus(act.code, st.status)))) return;
     audit("status", act.code, { how: "활동 상태 변경", before: ST[before][0], after: ST[st.status][0], why: st.why, note: act.title });
     setSt({ ...st, why: "" }); done();
   };
-  const saveRun = () => {
+  const saveRun = async () => {
     if (!run.result.trim()) return setErr("수행 결과를 적어야 합니다.");
-    const r = { ...run, by: getUser(), at: nowStr() };
-    saveAct(act.code, { runs: [r, ...(saved.runs || [])].slice(0, 50) });
+    if (!(await run1(() => repo.addRun(act.code, run)))) return;
     audit("run", act.code, { how: `수행 기록 등록 (${run.date})`, after: run.result, note: act.title });
     setRun({ date: TODAY, result: "", note: "" }); done();
   };
-  const saveEv = () => {
+  const saveEv = async () => {
     if (!ev.title.trim()) return setErr("증빙 제목을 적어야 합니다.");
     if (!/^\d{4}-\d{2}$/.test(ev.period)) return setErr("증빙 기간은 YYYY-MM 형식입니다.");
     if (ev.url && !/^https:\/\//.test(ev.url)) return setErr("링크는 https:// 로 시작해야 합니다 (Drive 공유 링크).");
-    const e = { ...ev, by: getUser(), at: nowStr() };
-    saveAct(act.code, { ev: [...(saved.ev || []), e] });
+    if (!(await run1(() => repo.addEvidence(act.code, ev)))) return;
     audit("evidence", act.code, { how: `증빙 등록 · ${SRC[ev.src]} · ${ev.period}`, after: ev.title, note: ev.url || act.title });
     setEv({ title: "", period: TODAY.slice(0, 7), src: "manual", url: "" }); done();
   };
 
-  const runs = saved.runs || [];
+  const runs = act.runs || [];
   return (
     <div className="pt-3 space-y-2" style={{ borderTop: `1px solid ${C.line}` }}>
       {runs.length > 0 && (
@@ -130,53 +126,67 @@ const F_SEV_COLOR = { 결함: "#B23A3A", 경결함: "#B7791F", 관찰: "#2E5C8A"
 const F_ST_COLOR = { 접수: "#B7791F", 조치중: "#2E5C8A", 검증대기: "#6D5BA8", 종결: "#2E7D5B" };
 
 const SAMPLE_FINDINGS = [
-  { id: "F-2026-001", src: "외부 심사", std: "CSAP", clause: "접근통제", act: "L04", title: "관리 콘솔 접근 IP 제한 미적용", sev: "결함", owner: "인프라 담당", due: "2026-09-30", opened: "2026-07-22", status: "조치중", cause: "", action: "", log: ["2026-07-22 CSAP 사전환경조사 지적 등록 (샘플)"] },
+  { id: "F-2026-001", src: "외부 심사", std: "CSAP", clause: "접근통제", act: "L04", title: "관리 콘솔 접근 IP 제한 미적용", sev: "결함", owner: "김개발", due: "2026-09-30", opened: "2026-07-22", status: "조치중", cause: "", action: "", log: ["2026-07-22 CSAP 사전환경조사 지적 등록 (샘플)"] },
   { id: "F-2026-002", src: "자체점검", std: "ISMSP", clause: "2.5.6", act: "L03", title: "퇴사자 GitHub 계정 1건 미회수", sev: "경결함", owner: "이정민", due: "2026-09-10", opened: "2026-08-20", status: "검증대기", cause: "퇴사 체크리스트에 GitHub 항목 누락", action: "계정 회수, 체크리스트 개정", log: ["2026-08-20 자체점검 등록 (샘플)", "2026-09-02 조치 완료 → 검증 요청"] },
 ];
-const loadF = () => store.get("findings", null) || SAMPLE_FINDINGS;
+const stamp = () => nowStr().slice(0, 16);
+// ISO(UTC) → KST "YYYY-MM-DD HH:MM" (데모 모드의 nowStr 형식도 그대로 통과)
+const kst = (v) => (!v ? "" : /T/.test(v) ? new Date(v).toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0, 16) : v.slice(0, 16));
 const nextId = (list) => { const y = TODAY.slice(0, 4); const n = list.filter((f) => f.id.startsWith(`F-${y}-`)).map((f) => +f.id.slice(7)).reduce((a, b) => Math.max(a, b), 0); return `F-${y}-${String(n + 1).padStart(3, "0")}`; };
 export const isOverdue = (f) => f.status !== "종결" && f.due && f.due < TODAY;
 
 export function FindingsPage({ go }) {
-  const [list, setList] = useState(loadF);
-  const [sel, setSel] = useState(list[0]?.id);
+  const [list, setList] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [sel, setSel] = useState(null);
   const [filter, setFilter] = useState("open");
   const [form, setForm] = useState(null);
+  const [draft, setDraft] = useState({ cause: "", action: "" });
   const [err, setErr] = useState("");
-  const persist = (n) => { setList(n); store.set("findings", n); };
-  const f = list.find((x) => x.id === sel);
+  useEffect(() => {
+    Promise.all([repo.listFindings(SAMPLE_FINDINGS), repo.listUsers()])
+      .then(([l, u]) => { setList(l); setUsers(u); setSel(l[0]?.id); })
+      .catch((e) => { setList([]); setErr(`불러오기 실패: ${e.message}`); });
+  }, []);
+  const f = (list || []).find((x) => x.id === sel);
+  useEffect(() => { setDraft({ cause: f?.cause || "", action: f?.action || "" }); }, [sel, list]);
+  if (!list) return <p className="text-sm" style={{ color: C.mute }}>불러오는 중…</p>;
+  const nameOf = (id) => users.find((u) => u.id === id)?.name || id || "미지정";
+  // 저장 성공 후 목록 갱신 — 실패하면 화면 상태를 바꾸지 않는다
+  const persist = async (item) => { try { setList(await repo.saveFinding(item, list)); setErr(""); return true; } catch (e) { setErr(`저장 실패: ${e.message}`); return false; } };
   const rows = list.filter((x) => filter === "all" || (filter === "open" ? x.status !== "종결" : filter === "overdue" ? isOverdue(x) : x.status === "종결"));
 
-  const kpi = useMemo(() => {
+  const kpi = (() => {
     const closed = list.filter((x) => x.status === "종결" && x.closedAt);
     const days = closed.map((x) => (new Date(x.closedAt.slice(0, 10)) - new Date(x.opened || x.closedAt.slice(0, 10))) / 86400000);
     return { open: list.filter((x) => x.status !== "종결").length, overdue: list.filter(isOverdue).length, major: list.filter((x) => x.status !== "종결" && x.sev === "결함").length, avg: days.length ? Math.round(days.reduce((a, b) => a + b, 0) / days.length) : "—" };
-  }, [list]);
+  })();
 
-  const create = () => {
+  const create = async () => {
     if (!form.title.trim() || !form.due) return setErr("내용과 조치 기한은 필수입니다.");
     const id = nextId(list);
-    const item = { ...form, id, status: "접수", opened: TODAY, cause: "", action: "", log: [`${nowStr().slice(0, 16)} ${getUser()} 등록`] };
-    persist([item, ...list]); setSel(id); setForm(null); setErr("");
+    const item = { ...form, id, status: "접수", opened: TODAY, cause: "", action: "", log: [`${stamp()} ${getUser()} 등록`] };
+    if (!(await persist(item))) return;
+    setSel(id); setForm(null);
     audit("finding", id, { how: `지적사항 등록 · ${form.src} · ${form.sev}`, after: form.title, note: `${form.act} 연계, 기한 ${form.due}` });
   };
-  const update = (patch, note) => {
+  const update = async (patch, note) => {
     const before = f.status;
+    const cur = { ...f, ...draft };
     if (patch.status === "종결") {
-      if (!f.action.trim()) return setErr("시정조치 내용을 적어야 종결할 수 있습니다.");
-      if (f.owner === getUser()) return setErr("조치 담당자가 직접 종결 검증할 수 없습니다 (직무 분리, G08). 다른 담당자가 검증하세요.");
-      patch = { ...patch, closedAt: nowStr(), verifier: getUser() };
+      if (!cur.action.trim()) return setErr("시정조치 내용을 적어야 종결할 수 있습니다.");
+      if (cur.owner && cur.owner === getUserId()) return setErr("조치 담당자가 직접 종결 검증할 수 없습니다 (직무 분리, G08). 다른 담당자가 검증하세요.");
+      patch = { ...patch, closedAt: new Date().toISOString(), verifier: getUserId() };
     }
-    setErr("");
-    const n = list.map((x) => (x.id === f.id ? { ...x, ...patch, log: [...x.log, `${nowStr().slice(0, 16)} ${getUser()} ${note}`] } : x));
-    persist(n);
+    if (!(await persist({ ...cur, ...patch, log: [...cur.log, `${stamp()} ${getUser()} ${note}`] }))) return;
     audit("finding", f.id, { how: note, before, after: patch.status || before, note: f.title });
   };
-  const edit = (k, v) => persist(list.map((x) => (x.id === f.id ? { ...x, [k]: v } : x)));
+  // 원인·조치 입력은 칸을 벗어날 때 한 번 저장
+  const saveDraft = () => { if (draft.cause !== f.cause || draft.action !== f.action) persist({ ...f, ...draft }); };
 
   const exportCsv = () => {
     dl(csv(["번호", "출처", "기준", "조항", "활동", "내용", "등급", "담당", "기한", "상태", "근본원인", "시정조치", "검증자", "종결일"],
-      list.map((x) => [x.id, x.src, STD_LABEL[x.std] || x.std, x.clause, x.act, x.title, x.sev, x.owner, x.due, x.status, x.cause, x.action, x.verifier || "", (x.closedAt || "").slice(0, 10)])), `findings_${TODAY}.csv`);
+      list.map((x) => [x.id, x.src, STD_LABEL[x.std] || x.std, x.clause, x.act, x.title, x.sev, nameOf(x.owner), x.due, x.status, x.cause, x.action, x.verifier ? nameOf(x.verifier) : "", kst(x.closedAt).slice(0, 10)])), `findings_${TODAY}.csv`);
     audit("report", "지적사항 대장", { how: `${list.length}건 CSV 내보내기` });
   };
 
@@ -201,7 +211,7 @@ export function FindingsPage({ go }) {
             <select value={form.act} onChange={(e) => setForm({ ...form, act: e.target.value })} className={input} style={box}>{ACTS.map((a) => <option key={a.code} value={a.code}>{a.code} {a.title.slice(0, 18)}</option>)}</select>
             <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="지적 내용" className={input + " col-span-2 md:col-span-4"} style={box} />
             <select value={form.sev} onChange={(e) => setForm({ ...form, sev: e.target.value })} className={input} style={box}>{F_SEV.map((v) => <option key={v}>{v}</option>)}</select>
-            <input value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })} placeholder="조치 담당" className={input} style={box} />
+            <select value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })} className={input} style={box}><option value="">조치 담당 선택</option>{users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
             <input type="date" value={form.due} onChange={(e) => setForm({ ...form, due: e.target.value })} className={input} style={box} />
             <Btn small primary onClick={create}>등록</Btn>
           </div>
@@ -233,16 +243,16 @@ export function FindingsPage({ go }) {
             <Card title={`${f.id} ${f.title}`} right={<Tag color={F_ST_COLOR[f.status]}>{f.status}</Tag>}>
               <div className="text-sm space-y-3">
                 <table className="w-full text-xs"><tbody>
-                  {[["출처", f.src], ["기준", `${STD_LABEL[f.std] || f.std} ${f.clause}`], ["등급", f.sev], ["담당", f.owner || "미지정"], ["기한", f.due], ["검증", f.verifier ? `${f.verifier} · ${f.closedAt?.slice(0, 16)}` : "—"]].map(([k, v]) => <tr key={k}><td className="py-0.5 w-12" style={{ color: C.mute }}>{k}</td><td>{v}</td></tr>)}
+                  {[["출처", f.src], ["기준", `${STD_LABEL[f.std] || f.std} ${f.clause}`], ["등급", f.sev], ["담당", nameOf(f.owner)], ["기한", f.due], ["검증", f.verifier ? `${nameOf(f.verifier)} · ${kst(f.closedAt)}` : "—"]].map(([k, v]) => <tr key={k}><td className="py-0.5 w-12" style={{ color: C.mute }}>{k}</td><td>{v}</td></tr>)}
                   <tr><td className="py-0.5" style={{ color: C.mute }}>활동</td><td><button style={{ color: C.steel }} onClick={() => go(ACTS.find((a) => a.code === f.act)?.d)}>{f.act} {ACTS.find((a) => a.code === f.act)?.title}</button></td></tr>
                 </tbody></table>
                 <div>
                   <div className="text-xs mb-1" style={{ color: C.mute }}>근본 원인</div>
-                  <textarea rows={2} disabled={f.status === "종결"} value={f.cause} onChange={(e) => edit("cause", e.target.value)} className={input} style={box} />
+                  <textarea rows={2} disabled={f.status === "종결"} value={draft.cause} onChange={(e) => setDraft({ ...draft, cause: e.target.value })} onBlur={saveDraft} className={input} style={box} />
                 </div>
                 <div>
                   <div className="text-xs mb-1" style={{ color: C.mute }}>시정조치 (재발방지 포함)</div>
-                  <textarea rows={3} disabled={f.status === "종결"} value={f.action} onChange={(e) => edit("action", e.target.value)} className={input} style={box} />
+                  <textarea rows={3} disabled={f.status === "종결"} value={draft.action} onChange={(e) => setDraft({ ...draft, action: e.target.value })} onBlur={saveDraft} className={input} style={box} />
                 </div>
                 <div>
                   <div className="text-xs mb-1" style={{ color: C.mute }}>이력</div>
@@ -250,7 +260,7 @@ export function FindingsPage({ go }) {
                 </div>
                 <div className="flex flex-wrap gap-2 pt-3" style={{ borderTop: `1px solid ${C.line}` }}>
                   {f.status === "접수" && <Btn small primary onClick={() => update({ status: "조치중" }, "조치 착수")}>조치 착수</Btn>}
-                  {f.status === "조치중" && <Btn small primary onClick={() => f.action.trim() ? update({ status: "검증대기" }, "조치 완료 → 검증 요청") : setErr("시정조치 내용을 먼저 적으세요.")}>검증 요청</Btn>}
+                  {f.status === "조치중" && <Btn small primary onClick={() => draft.action.trim() ? update({ status: "검증대기" }, "조치 완료 → 검증 요청") : setErr("시정조치 내용을 먼저 적으세요.")}>검증 요청</Btn>}
                   {f.status === "검증대기" && <><Btn small primary onClick={() => update({ status: "종결" }, "효과성 확인 → 종결")}>검증·종결</Btn><Btn small onClick={() => update({ status: "조치중" }, "검증 반려 → 재조치")}>반려</Btn></>}
                 </div>
                 {err && <p className="text-xs" style={{ color: ST.gap[1] }}>{err}</p>}
@@ -264,9 +274,8 @@ export function FindingsPage({ go }) {
 }
 
 /* ─────────────── 심사 대응 패키지 (기준별 적용성·증빙 색인) ─────────────── */
-function packageRows(std) {
-  const methods = store.get("methods", {});
-  const findings = loadF();
+function packageRows(std, findings) {
+  const methods = repo.methodsCache();
   return ACTS.filter((x) => x.map[std]).map((x) => {
     const g = evidenceGap(x);
     const m = methods[x.code];
@@ -284,7 +293,9 @@ function packageRows(std) {
 export function AuditPackage({ std: std0, setStd }) {
   const std = std0 === "ALL" ? "ISMSP" : std0;
   const [only, setOnly] = useState(false);
-  const all = packageRows(std);
+  const [findings, setFindings] = useState([]);
+  useEffect(() => { repo.listFindings(SAMPLE_FINDINGS).then(setFindings).catch(() => {}); }, []);
+  const all = packageRows(std, findings);
   const rows = only ? all.filter((r) => !r.gap.ok || r.x.status !== "ok" || r.open.length) : all;
   const k = { n: all.length, ok: all.filter((r) => r.x.status === "ok").length, noEv: all.filter((r) => !r.gap.ok).length, open: all.reduce((a, r) => a + r.open.length, 0) };
 

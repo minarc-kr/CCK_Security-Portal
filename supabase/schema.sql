@@ -1,8 +1,9 @@
--- CCK 보안포털 Supabase 스키마 v0.5 (활동 기반 구조)
+-- CCK 보안포털 Supabase 스키마 v0.6 (활동 기반 구조)
+-- 적용: Supabase SQL Editor에서 schema.sql → seed.sql 순서로 실행
 create type role_t as enum ('employee','security','admin');
-create type req_type_t as enum ('account','permission','pi_register','subject_request','incident','breach','other');
+create type req_type_t as enum ('account','permission','pi_register','subject_request','incident','breach','trade_leak','other');
 create type req_status_t as enum ('received','in_progress','done','rejected');
-create type src_t as enum ('portal','gws','github','slack','jira','netlify','manual');
+create type src_t as enum ('portal','gws','github','slack','jira','netlify','manual','ctas');
 create type act_status_t as enum ('ok','warn','gap','na');
 
 create table profiles (
@@ -141,7 +142,6 @@ create table change_log (                -- 누가(사람/Claude/스케줄러) �
 );
 
 -- v0.4 추가: KISA C-TAS 위협정보 (사내 적용 전용, 외부 재배포 금지) ----------
-alter type src_t add value 'ctas';
 create type ioc_kind_t as enum ('ip','domain','url','hash','email','cve');
 create table threat_intel (
   id bigserial primary key,
@@ -189,19 +189,128 @@ alter table findings
 -- 증빙 원본: Storage 버킷 'evidence' (비공개). monthly-collect가 {YYYY-MM}/{gws|github|slack}.json 저장
 insert into storage.buckets (id, name, public) values ('evidence', 'evidence', false) on conflict (id) do nothing;
 
--- RLS 보강: 정보보호부문(security·admin)만 운영 테이블 접근, 스케줄 함수는 service key로 RLS 우회
-create or replace function is_security() returns boolean language sql stable security definer set search_path = public as $$
-  select exists (select 1 from profiles where id = auth.uid() and role in ('security','admin'))
-$$;
-alter table findings enable row level security;
-alter table activity_occurrences enable row level security;
-alter table notifications enable row level security;
-alter table change_log enable row level security;
-create policy sec_all on findings for all using (is_security()) with check (is_security());
-create policy sec_all on activity_occurrences for all using (is_security()) with check (is_security());
-create policy sec_read on notifications for select using (is_security());
-create policy sec_read on change_log for select using (is_security());
-create policy sec_all on evidences for all using (is_security()) with check (is_security());
-create policy sec_read on threat_intel for select using (is_security());
-create policy sec_read on threat_alerts for select using (is_security());
+-- v0.6 추가: 포털 DB 연결 (로그인·역할·감사로그·RLS) ----------------------------
+create table portal_settings (key text primary key, value text not null);
+-- Google SSO 허용 도메인 — 설치 후 회사 도메인으로 바꾼다 (다른 도메인 계정은 가입 자체가 거부됨)
+insert into portal_settings values ('allowed_domain', 'example.com');
 
+alter table evidences add column url text, add column note text;
+alter table activity_runs add column performed_on date default current_date;
+alter table findings add column ref text unique, add column history jsonb not null default '[]';
+alter table requests add column channel text default '포털';
+
+-- 작성자 컬럼은 로그인 사용자로 기본값 (클라이언트가 다른 사람 이름으로 쓰지 못하게 RLS와 함께 사용)
+alter table requests alter column requester set default auth.uid();
+alter table request_logs alter column actor set default auth.uid();
+alter table activity_runs alter column performed_by set default auth.uid();
+alter table evidences alter column collected_by set default auth.uid();
+alter table policy_reads alter column user_id set default auth.uid();
+
+-- 활동별 채택 방법 (요구 방법 패널)
+create table method_choices (
+  activity_code text primary key references activities(code),
+  chosen int[] not null default '{}',
+  memo text,
+  updated_by uuid references profiles(id),
+  updated_at timestamptz default now()
+);
+
+-- 행위기반 감사로그 — 누가·언제·무엇을·어떻게·왜. 작성자·시각은 서버가 채우고 수정·삭제 경로가 없다 (L06 증빙)
+create table audit_log (
+  id bigserial primary key,
+  at timestamptz not null default now(),
+  user_id uuid references profiles(id),
+  who text,
+  action text not null, target text, how text, before text, after text, why text, note text
+);
+create function audit_stamp() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  new.at := now();
+  new.user_id := auth.uid();
+  new.who := (select name from profiles where id = auth.uid());
+  return new;
+end $$;
+create trigger audit_stamp before insert on audit_log for each row execute function audit_stamp();
+
+-- 요청 기한은 서버가 계산한다: 유출 72시간(34조), 정보주체 요청 10일(35~37조)
+create function request_deadline() returns trigger language plpgsql as $$
+begin
+  new.created_at := coalesce(new.created_at, now());
+  if new.type = 'breach' then new.deadline := new.created_at + interval '72 hours';
+  elsif new.type = 'subject_request' then new.deadline := new.created_at + interval '10 days';
+  end if;
+  return new;
+end $$;
+create trigger request_deadline before insert on requests for each row execute function request_deadline();
+
+-- Google 로그인 첫 접속 시 프로필 생성 (기본 역할 employee — 역할 상향은 admin만)
+create function handle_new_user() returns trigger language plpgsql security definer set search_path = public as $$
+declare dom text := (select value from portal_settings where key = 'allowed_domain');
+begin
+  if dom is not null and lower(split_part(new.email, '@', 2)) <> lower(dom) then
+    raise exception '허용되지 않은 도메인입니다: %', new.email;
+  end if;
+  insert into profiles (id, email, name)
+  values (new.id, new.email, coalesce(new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)));
+  return new;
+end $$;
+create trigger on_auth_user_created after insert on auth.users for each row execute function handle_new_user();
+
+-- RLS ---------------------------------------------------------------------------
+-- public 스키마의 모든 테이블에 RLS를 켠다. 정책이 없는 테이블은 anon·authenticated 모두 접근 불가.
+-- 스케줄 함수는 service key로 RLS를 우회한다.
+do $$ declare t text; begin
+  for t in select tablename from pg_tables where schemaname = 'public' loop
+    execute format('alter table public.%I enable row level security', t);
+  end loop;
+end $$;
+
+create function has_role(variadic roles role_t[]) returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from profiles where id = auth.uid() and role = any(roles))
+$$;
+create function is_security() returns boolean language sql stable security definer set search_path = public as $$
+  select has_role('security', 'admin')
+$$;
+
+-- 기준 데이터: 로그인 사용자 읽기, 정보보호부문 쓰기
+do $$ declare t text; begin
+  foreach t in array array['domains','activities','activity_mappings','policies'] loop
+    execute format('create policy read_all on public.%I for select to authenticated using (true)', t);
+    execute format('create policy sec_write on public.%I for all to authenticated using (is_security()) with check (is_security())', t);
+  end loop;
+end $$;
+
+-- 운영 데이터: 정보보호부문 전용 (개인정보 대장·영업비밀 대장 포함)
+do $$ declare t text; begin
+  foreach t in array array['activity_runs','evidences','method_choices','findings','activity_occurrences','audits',
+                           'assets','vulnerabilities','ai_systems','pi_inventory','pi_transfers','trade_secrets','trainings'] loop
+    execute format('create policy sec_all on public.%I for all to authenticated using (is_security()) with check (is_security())', t);
+  end loop;
+  foreach t in array array['notifications','change_log','threat_intel','threat_alerts'] loop
+    execute format('create policy sec_read on public.%I for select to authenticated using (is_security())', t);
+  end loop;
+end $$;
+
+-- 프로필: 본인·정보보호부문 조회, 역할 변경은 admin만
+create policy self_read on profiles for select to authenticated using (id = auth.uid() or is_security());
+create policy admin_update on profiles for update to authenticated using (has_role('admin')) with check (has_role('admin'));
+create policy admin_only on portal_settings for all to authenticated using (has_role('admin')) with check (has_role('admin'));
+
+-- 요청·신고: 본인 접수·조회, 처리는 정보보호부문
+create policy own_insert on requests for insert to authenticated with check (requester = auth.uid() and status = 'received');
+create policy own_read on requests for select to authenticated using (requester = auth.uid() or is_security());
+create policy sec_update on requests for update to authenticated using (is_security()) with check (is_security());
+create policy log_read on request_logs for select to authenticated
+  using (is_security() or exists (select 1 from requests r where r.id = request_id and r.requester = auth.uid()));
+create policy log_insert on request_logs for insert to authenticated with check (actor = auth.uid() and
+  (is_security() or exists (select 1 from requests r where r.id = request_id and r.requester = auth.uid())));
+
+-- 정책 열람 확인·교육 결과: 본인 기록, 정보보호부문 조회
+create policy own_insert on policy_reads for insert to authenticated with check (user_id = auth.uid());
+create policy own_read on policy_reads for select to authenticated using (user_id = auth.uid() or is_security());
+create policy own_read on training_results for select to authenticated using (user_id = auth.uid() or is_security());
+create policy sec_write on training_results for all to authenticated using (is_security()) with check (is_security());
+
+-- 감사로그: 누구나 남기고(작성자는 트리거가 고정), 조회는 정보보호부문만, 수정·삭제 정책 없음
+create policy any_insert on audit_log for insert to authenticated with check (true);
+create policy sec_read on audit_log for select to authenticated using (is_security());

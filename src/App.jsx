@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { C, store, audit, ACTION_LABEL, pad, nowStr, setUser, getUser, Tag, Btn, Card, Bar } from "./common.jsx";
-import { STD, STD_LABEL, DOMAINS, ACTS, INIT_REQUESTS, REQ_TYPES, TYPE_ACT, TYPE_DUE, POLICIES, MY_TRAININGS, linkOf, TODAY, OCC, OST, CTAS, SRC, ST, METHODS, APPROVAL, applyActivityOverrides } from "./acts-data.js";
+import { STD, STD_LABEL, DOMAINS, ACTS, REQ_TYPES, TYPE_DUE, MY_TRAININGS, linkOf, TODAY as SAMPLE_TODAY, OCC, OST, CTAS, SRC, ST, METHODS, APPROVAL } from "./acts-data.js";
+import * as repo from "./repo.js";
 import { ActivityLog, FindingsPage, AuditPackage, evidenceGap } from "./AuditPrep.jsx";
 import PiaTool from "./Pia.jsx";
 import EmpPia from "./EmpPia.jsx";
@@ -8,7 +9,10 @@ import PolicyPanel from "./PolicyPanel.jsx";
 import { BarChart, Bar as RBar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 /* ─────────────── 공통 UI ─────────────── */
-applyActivityOverrides(store.get("acts", {}));
+// 데모 모드는 샘플 데이터 기준일(09-04), DB 모드는 실제 오늘
+const TODAY = repo.mode === "db" ? repo.today() : SAMPLE_TODAY;
+const plusDays = (d, n) => new Date(new Date(d + "T00:00:00Z").getTime() + n * 864e5).toISOString().slice(0, 10);
+const SOON = plusDays(TODAY, 41), URGENT = plusDays(TODAY, 26);
 const Dot = ({ s }) => <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: ST[s][1] }} />;
 
 /* ─────────────── 현황 ─────────────── */
@@ -16,7 +20,7 @@ function Overview({ go, std, setStd }) {
   const acts = std === "ALL" ? ACTS : ACTS.filter((x) => x.map[std]);
   const cnt = (list) => ({ ok: list.filter((x) => x.status === "ok").length, warn: list.filter((x) => x.status === "warn").length, gap: list.filter((x) => x.status === "gap").length });
   const tot = cnt(acts);
-  const soon = ACTS.filter((x) => x.next !== "—" && x.next <= "2026-10-15").sort((p, q) => p.next.localeCompare(q.next)).slice(0, 8);
+  const soon = ACTS.filter((x) => x.next !== "—" && x.next <= SOON).sort((p, q) => p.next.localeCompare(q.next)).slice(0, 8);
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
@@ -47,9 +51,9 @@ function Overview({ go, std, setStd }) {
           </Card>
         </div>
         <div className="md:col-span-2">
-          <Card title="기한 임박 (10/15까지)">
+          <Card title={`기한 임박 (${+SOON.slice(5, 7)}/${+SOON.slice(8)}까지)`}>
             <ul className="text-sm divide-y" style={{ borderColor: C.line }}>
-              {soon.map((x) => <li key={x.code} className="py-2 flex items-center gap-2"><Dot s={x.status} /><span className="text-xs w-8" style={{ color: C.mute }}>{x.code}</span><span className="truncate">{x.title}</span><span className="ml-auto text-xs shrink-0" style={{ color: x.next <= "2026-09-30" ? ST.gap[1] : C.mute }}>{x.next.slice(5)}</span></li>)}
+              {soon.map((x) => <li key={x.code} className="py-2 flex items-center gap-2"><Dot s={x.status} /><span className="text-xs w-8" style={{ color: C.mute }}>{x.code}</span><span className="truncate">{x.title}</span><span className="ml-auto text-xs shrink-0" style={{ color: x.next <= URGENT ? ST.gap[1] : C.mute }}>{x.next.slice(5)}</span></li>)}
             </ul>
           </Card>
         </div>
@@ -124,7 +128,7 @@ function Domain({ code, std, go, onChange }) {
                 <tr key={r.code} onClick={() => setSel(r.code)} className="cursor-pointer" style={{ background: x?.code === r.code ? "#EEF3F9" : undefined }}>
                   <td className="px-3 py-2.5"><div className="flex items-center gap-2"><Dot s={r.status} /><span className="text-xs w-8" style={{ color: C.mute }}>{r.code}</span><span>{r.title}</span></div></td>
                   <td className="px-2 py-2.5 text-xs" style={{ color: C.mute }}>{r.cycle}</td>
-                  <td className="px-2 py-2.5 text-xs" style={{ color: r.next !== "—" && r.next <= "2026-09-30" ? ST.gap[1] : C.mute }}>{r.next}</td>
+                  <td className="px-2 py-2.5 text-xs" style={{ color: r.next !== "—" && r.next <= URGENT ? ST.gap[1] : C.mute }}>{r.next}</td>
                   <td className="px-2 py-2.5 text-xs" style={{ color: C.mute }}>{r.auto.length ? "자동" : "수동"}</td>
                   <td className="px-2 py-2.5"><Tag color={ST[r.status][1]}>{ST[r.status][0]}</Tag></td>
                 </tr>
@@ -178,8 +182,8 @@ function Domain({ code, std, go, onChange }) {
                     <Btn small primary onClick={() => go("pia")}>개인정보 흐름도·영향평가 열기</Btn>
                   </div>
                 )}
-                <MethodPanel act={x} />
-                <ActivityLog act={x} onChange={onChange} />
+                <MethodPanel key={`method-${x.code}`} act={x} />
+                <ActivityLog key={`log-${x.code}`} act={x} onChange={onChange} />
               </div>
             </Card>
           )}
@@ -192,17 +196,16 @@ function Domain({ code, std, go, onChange }) {
 /* ─────────────── 요구 방법 패널 (활동 상세) ─────────────── */
 function MethodPanel({ act }) {
   const list = METHODS[act.code] || [];
-  const saved = store.get("methods", {})[act.code] || { chosen: [], memo: "" };
+  const [saved, setSaved] = useState(() => repo.methodsCache()[act.code] || { chosen: [], memo: "" });
+  const [err, setErr] = useState("");
   const [chosen, setChosen] = useState(saved.chosen);
   const [memo, setMemo] = useState(saved.memo);
   const [open, setOpen] = useState(true);
   const [hover, setHover] = useState(null);
   const dirty = JSON.stringify(chosen) !== JSON.stringify(saved.chosen) || memo !== saved.memo;
-  const save = () => {
-    const all = store.get("methods", {});
-    const before = all[act.code];
-    all[act.code] = { chosen, memo, by: getUser(), at: nowStr() };
-    store.set("methods", all);
+  const save = async () => {
+    const before = repo.methodsCache()[act.code];
+    try { setSaved(await repo.saveMethod(act.code, { chosen, memo })); setErr(""); } catch (e) { return setErr(`저장 실패: ${e.message}`); }
     audit("method", act.code, { how: `채택 방법 ${chosen.length}개 저장`, before: before ? before.chosen.map((i) => `${list[i]?.[0]}#${i + 1}`).join(", ") : "(없음)", after: chosen.map((i) => `${list[i]?.[0]}#${i + 1}`).join(", "), why: memo || "(사유 미기재)", note: act.title });
     setOpen(true);
   };
@@ -228,7 +231,7 @@ function MethodPanel({ act }) {
             );
           })}
           <textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={2} placeholder="채택 사유·적용 범위 메모 (예: 공공 SaaS는 KCMVP 모듈, 사내는 AES-256)" className="w-full text-xs px-2 py-1.5 rounded-sm" style={{ border: `1px solid ${C.line}` }} />
-          <div className="flex items-center gap-2"><Btn small primary onClick={save}>{dirty ? "채택 방법 저장" : "저장됨"}</Btn><span className="text-xs" style={{ color: C.mute }}>저장 시 누가·언제·무엇을·왜 로그가 남습니다.</span></div>
+          <div className="flex items-center gap-2"><Btn small primary onClick={save}>{dirty ? "채택 방법 저장" : "저장됨"}</Btn><span className="text-xs" style={{ color: err ? ST.gap[1] : C.mute }}>{err || "저장 시 누가·언제·무엇을·왜 로그가 남습니다."}</span></div>
         </div>
       )}
     </div>
@@ -237,18 +240,21 @@ function MethodPanel({ act }) {
 
 /* ─────────────── 로그점검 (행위기반 감사로그) ─────────────── */
 function AuditPage() {
-  const [logs, setLogs] = useState(() => store.get("audit", []));
+  const [logs, setLogs] = useState([]);
   const [who, setWho] = useState("ALL"); const [kind, setKind] = useState("ALL"); const [days, setDays] = useState(30);
+  const [err, setErr] = useState("");
+  const reload = () => repo.listAudit(days).then((l) => { setLogs(l); setErr(""); }).catch((e) => setErr(e.message));
+  useEffect(() => { reload(); }, [days]);
   const users = [...new Set(logs.map((l) => l.who))];
-  const since = (() => { const d = new Date(); d.setDate(d.getDate() - days); return d.toISOString().slice(0, 10); })();
-  const rows = logs.filter((l) => (who === "ALL" || l.who === who) && (kind === "ALL" || l.action === kind) && l.at.slice(0, 10) >= since);
-  const checks = store.get("logchecks", []);
-  const confirm = () => { audit("logcheck", "감사로그", { how: `최근 ${days}일 ${rows.length}건 점검`, note: "L06 접속기록·감사로그 검토 증빙" }); const c = [{ at: nowStr(), by: getUser(), n: rows.length }, ...checks]; store.set("logchecks", c.slice(0, 100)); setLogs(store.get("audit", [])); };
+  const rows = logs.filter((l) => (who === "ALL" || l.who === who) && (kind === "ALL" || l.action === kind));
+  // 점검 확인 이력은 감사로그의 logcheck 행에서 읽는다 (별도 저장소 없음)
+  const checks = logs.filter((l) => l.action === "logcheck").map((l) => ({ at: l.at, by: l.who, n: (l.how || "").match(/(\d+)건/)?.[1] || "?" }));
+  const confirm = async () => { await audit("logcheck", "감사로그", { how: `최근 ${days}일 ${rows.length}건 점검`, note: "L06 접속기록·감사로그 검토 증빙" }); reload(); };
   const csv = () => { const h = ["일시", "사용자", "행위", "대상", "내용", "이전", "이후", "사유"]; const body = rows.map((l) => [l.at, l.who, ACTION_LABEL[l.action] || l.action, l.target, l.how || "", l.before || "", l.after || "", l.why || ""].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")); const blob = new Blob(["\ufeff" + [h.join(","), ...body].join("\n")], { type: "text/csv" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `audit_${TODAY}.csv`; a.click(); audit("report", "감사로그 CSV", { how: `${rows.length}건 내보내기` }); };
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
-        <div><h1 className="text-xl font-semibold">로그점검</h1><p className="text-xs mt-1" style={{ color: C.mute }}>포털 내 모든 행위를 누가·언제·무엇을·어떻게(이전→이후)·왜 기준으로 기록합니다. 월 1회 점검 확인은 L06 증빙으로 남습니다.</p></div>
+        <div><h1 className="text-xl font-semibold">로그점검</h1><p className="text-xs mt-1" style={{ color: C.mute }}>포털 내 모든 행위를 누가·언제·무엇을·어떻게(이전→이후)·왜 기준으로 기록합니다. 월 1회 점검 확인은 L06 증빙으로 남습니다.{repo.mode === "db" && " 기록은 서버가 작성자·시각을 채우며 수정·삭제할 수 없습니다."}</p>{err && <p className="text-xs mt-1" style={{ color: ST.gap[1] }}>불러오기 실패: {err}</p>}</div>
         <div className="flex flex-wrap gap-2"><Btn small onClick={csv}>CSV 내보내기</Btn><Btn small primary onClick={confirm}>점검 확인</Btn></div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -281,7 +287,7 @@ function printReport(std) {
   const acts = std === "ALL" ? ACTS : ACTS.filter((x) => x.map[std]);
   const cnt = (l) => ({ ok: l.filter((x) => x.status === "ok").length, warn: l.filter((x) => x.status === "warn").length, gap: l.filter((x) => x.status === "gap").length });
   const tot = cnt(acts);
-  const methods = store.get("methods", {});
+  const methods = repo.methodsCache();
   const esc = (v) => String(v == null ? "" : v).replace(/[&<>]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[m]));
   const stdRows = STD.map((s) => { const l = ACTS.filter((x) => x.map[s]); const c = cnt(l); return `<tr><td>${STD_LABEL[s]}</td><td>${l.length}</td><td>${c.ok}</td><td>${c.warn}</td><td>${c.gap}</td><td>${l.length ? Math.round((c.ok / l.length) * 100) : 0}%</td></tr>`; }).join("");
   const domRows = DOMAINS.map((d) => { const l = acts.filter((x) => x.d === d.code); if (!l.length) return ""; const c = cnt(l); return `<tr><td>${d.name}</td><td>${l.length}</td><td>${c.ok}</td><td>${c.warn}</td><td>${c.gap}</td><td>${Math.round((c.ok / l.length) * 100)}%</td></tr>`; }).join("");
@@ -307,7 +313,12 @@ function Inbox({ requests, setRequests, go }) {
   const [sel, setSel] = useState(requests[0]?.id);
   const r = requests.find((x) => x.id === sel) || requests[0];
   const act = r && ACTS.find((x) => x.code === r.act);
-  const upd = (id, patch, note) => { const cur = requests.find((x) => x.id === id); audit("process", `요청 #${id}`, { how: note, before: cur?.status, after: patch.status || cur?.status, note: cur?.title }); setRequests(requests.map((x) => (x.id === id ? { ...x, ...patch, log: [...x.log, `09-04 ${note}`] } : x))); };
+  const [err, setErr] = useState("");
+  const upd = async (id, patch, note) => {
+    const cur = requests.find((x) => x.id === id);
+    try { setRequests(await repo.updateRequest(id, patch, note, requests)); setErr(""); } catch (e) { return setErr(`저장 실패: ${e.message}`); }
+    audit("process", `요청 ${cur?.title}`, { how: note, before: cur?.status, after: patch.status || cur?.status, note: cur?.title });
+  };
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-2"><h1 className="text-xl font-semibold">요청함</h1><span className="text-xs" style={{ color: C.mute }}>포털·Slack·Gmail·Claude에서 접수 → 처리 → 활동 증빙</span></div>
@@ -316,6 +327,7 @@ function Inbox({ requests, setRequests, go }) {
           <div className="overflow-x-auto"><table className="w-full text-sm min-w-[520px]">
             <thead><tr className="text-xs text-left" style={{ color: C.mute, background: C.bg }}><th className="px-3 py-2 font-normal">유형</th><th className="px-2 py-2 font-normal">내용</th><th className="px-2 py-2 font-normal">접수</th><th className="px-2 py-2 font-normal">기한</th><th className="px-2 py-2 font-normal">상태</th></tr></thead>
             <tbody className="divide-y" style={{ borderColor: C.line }}>
+              {!requests.length && <tr><td colSpan={5} className="px-3 py-6 text-center text-xs" style={{ color: C.mute }}>접수된 요청이 없습니다.</td></tr>}
               {requests.map((x) => (
                 <tr key={x.id} onClick={() => setSel(x.id)} className="cursor-pointer" style={{ background: r?.id === x.id ? "#EEF3F9" : undefined }}>
                   <td className="px-3 py-2.5"><Tag color={["사고", "유출", "기술유출"].includes(x.type) ? ST.gap[1] : C.mute}>{x.type}</Tag></td>
@@ -334,8 +346,9 @@ function Inbox({ requests, setRequests, go }) {
               <div className="text-sm space-y-4">
                 <table className="w-full text-xs"><tbody>
                   <tr><td className="py-0.5 w-16" style={{ color: C.mute }}>접수 경로</td><td>{r.src} · {r.by} · {r.at}</td></tr>
+                  {r.detail && <tr><td className="py-0.5 align-top" style={{ color: C.mute }}>내용</td><td className="whitespace-pre-line">{r.detail}</td></tr>}
                   <tr><td className="py-0.5" style={{ color: C.mute }}>기한</td><td style={{ color: r.due ? ST.gap[1] : C.mute }}>{r.due ? `${r.due} (${TYPE_DUE[r.type]})` : "없음"}</td></tr>
-                  <tr><td className="py-0.5" style={{ color: C.mute }}>증빙 활동</td><td><button className="focus:outline-none" style={{ color: C.steel }} onClick={() => go(act.d)}>{act.code} {act.title}</button></td></tr>
+                  <tr><td className="py-0.5" style={{ color: C.mute }}>증빙 활동</td><td><button className="focus:outline-none" style={{ color: C.steel }} onClick={() => act && go(act.d)}>{act?.code} {act?.title}</button></td></tr>
                 </tbody></table>
                 <div>
                   <div className="text-xs mb-1" style={{ color: C.mute }}>처리 이력</div>
@@ -346,6 +359,7 @@ function Inbox({ requests, setRequests, go }) {
                   {r.status === "처리중" && <Btn small primary onClick={() => upd(r.id, { status: "완료" }, `처리 완료 → ${r.act} 증빙 저장`)}>완료</Btn>}
                   {["접수", "처리중"].includes(r.status) && <Btn small onClick={() => upd(r.id, { status: "반려" }, "반려")}>반려</Btn>}
                 </div>
+                {err && <p className="text-xs" style={{ color: ST.gap[1] }}>{err}</p>}
               </div>
             </Card>
           )}
@@ -357,10 +371,13 @@ function Inbox({ requests, setRequests, go }) {
 
 /* ─────────────── 임직원 화면 ─────────────── */
 function EmpHome({ requests, go }) {
-  const unread = POLICIES.filter((p) => !p.read).length, todo = MY_TRAININGS.filter((t) => !t.done).length, mine = requests.filter((r) => r.by === "김개발");
+  const me = repo.currentUser();
+  const [pols, setPols] = useState([]);
+  useEffect(() => { repo.listPolicies().then(setPols).catch(() => {}); }, []);
+  const unread = pols.filter((p) => !p.read).length, todo = MY_TRAININGS.filter((t) => !t.done).length, mine = requests.filter((r) => r.byId === me.id);
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold">김개발님, 오늘 할 일</h1>
+      <h1 className="text-xl font-semibold">{me.name}님, 오늘 할 일</h1>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {[["읽지 않은 정책·규칙", unread, unread ? ST.warn[1] : ST.ok[1], "policies"], ["미완료 교육·서약", todo, todo ? ST.warn[1] : ST.ok[1], "training"], ["내 요청", mine.length, C.ink, "requests"]].map(([l, v, c, pg]) => (
           <button key={l} onClick={() => go(pg)} className="text-left bg-white px-4 py-3 focus:outline-none focus:ring-2 rounded-sm" style={{ border: `1px solid ${C.line}`, borderRadius: 6 }}><div className="text-xs" style={{ color: C.mute }}>{l}</div><div className="text-2xl font-semibold mt-1" style={{ color: c }}>{v}</div></button>
@@ -374,24 +391,41 @@ function EmpHome({ requests, go }) {
   );
 }
 function EmpPolicies() {
-  const [sel, setSel] = useState(0); const [read, setRead] = useState(POLICIES.map((p) => p.read));
-  const p = POLICIES[sel];
+  const [list, setList] = useState(null); const [sel, setSel] = useState(0); const [err, setErr] = useState("");
+  useEffect(() => { repo.listPolicies().then(setList).catch((e) => setErr(e.message)); }, []);
+  if (!list) return <p className="text-sm" style={{ color: err ? ST.gap[1] : C.mute }}>{err ? `불러오기 실패: ${err}` : "불러오는 중…"}</p>;
+  if (!list.length) return <p className="text-sm" style={{ color: C.mute }}>게시된 정책이 없습니다.</p>;
+  const p = list[sel], read = list.map((x) => x.read);
+  const confirmRead = async () => {
+    if (p.read) return;
+    try { await repo.markPolicyRead(p); } catch (e) { return setErr(e.message); }
+    audit("policy", p.code, { how: "열람 확인", note: `${p.title} ${p.ver}` });
+    setList(list.map((x, i) => (i === sel ? { ...x, read: true } : x)));
+  };
   return (
     <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
       <ul className="md:col-span-2 bg-white divide-y" style={{ border: `1px solid ${C.line}`, borderRadius: 6, borderColor: C.line }}>
-        {POLICIES.map((x, i) => <li key={x.code} onClick={() => setSel(i)} className="px-4 py-3 cursor-pointer" style={{ background: sel === i ? "#EEF3F9" : undefined }}><div className="flex justify-between"><span className="text-sm font-medium">{x.title}</span>{read[i] ? <Tag color={ST.ok[1]}>열람</Tag> : <Tag color={ST.warn[1]}>미열람</Tag>}</div><div className="text-xs mt-0.5" style={{ color: C.mute }}>{x.code} {x.cat} {x.ver} 시행 {x.date}</div></li>)}
+        {list.map((x, i) => <li key={x.id} onClick={() => setSel(i)} className="px-4 py-3 cursor-pointer" style={{ background: sel === i ? "#EEF3F9" : undefined }}><div className="flex justify-between"><span className="text-sm font-medium">{x.title}</span>{read[i] ? <Tag color={ST.ok[1]}>열람</Tag> : <Tag color={ST.warn[1]}>미열람</Tag>}</div><div className="text-xs mt-0.5" style={{ color: C.mute }}>{x.code} {x.cat} {x.ver} 시행 {x.date}</div></li>)}
       </ul>
       <div className="md:col-span-3"><Card title={`${p.code} ${p.title}`} right={<Tag>{p.ver}</Tag>}>
         <p className="text-sm leading-7">{p.body}</p>
-        <div className="mt-6 pt-4 flex items-center gap-3" style={{ borderTop: `1px solid ${C.line}` }}><Btn primary onClick={() => { if (!read[sel]) audit("policy", p.code, { how: "열람 확인", note: p.title }); setRead(read.map((r, i) => (i === sel ? true : r))); }}>{read[sel] ? "열람 확인함" : "읽고 이해했습니다"}</Btn><span className="text-xs" style={{ color: C.mute }}>열람 확인은 G01 활동 증빙으로 저장됩니다.</span></div>
+        <div className="mt-6 pt-4 flex items-center gap-3" style={{ borderTop: `1px solid ${C.line}` }}><Btn primary onClick={confirmRead}>{read[sel] ? "열람 확인함" : "읽고 이해했습니다"}</Btn><span className="text-xs" style={{ color: err ? ST.gap[1] : C.mute }}>{err || "열람 확인은 G01 활동 증빙으로 저장됩니다."}</span></div>
       </Card></div>
     </div>
   );
 }
 function EmpRequests({ requests, setRequests }) {
   const [f, setF] = useState({ type: "권한", title: "", detail: "" });
-  const mine = requests.filter((r) => r.by === "김개발");
-  const submit = () => { if (!f.title.trim()) return; audit("request", f.type, { how: "포털 요청 접수", note: f.title }); const due = f.type === "정보주체" ? "09-14" : f.type === "유출" ? "09-07 " + new Date().toTimeString().slice(0, 5) : undefined; setRequests([{ id: Date.now(), type: f.type, title: f.title, by: "김개발", at: "09-04", status: "접수", act: TYPE_ACT[f.type], src: "포털", due, log: ["09-04 포털 접수" + (due ? ` (기한 ${TYPE_DUE[f.type]}: ${due})` : "")] }, ...requests]); setF({ type: "권한", title: "", detail: "" }); };
+  const me = repo.currentUser();
+  const mine = requests.filter((r) => r.byId === me.id);
+  const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    if (!f.title.trim() || busy) return;
+    setBusy(true);
+    try { setRequests(await repo.createRequest(f, requests)); setErr(""); } catch (e) { setBusy(false); return setErr(`접수 실패: ${e.message}`); }
+    audit("request", f.type, { how: "포털 요청 접수", note: f.title });
+    setF({ type: "권한", title: "", detail: "" }); setBusy(false);
+  };
   const col = { 접수: ST.warn[1], 처리중: C.steel, 완료: ST.ok[1], 반려: ST.gap[1] };
   return (
     <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -401,12 +435,13 @@ function EmpRequests({ requests, setRequests }) {
           {TYPE_DUE[f.type] && <div className="text-xs" style={{ color: ST.gap[1] }}>{f.type === "유출" ? "접수 시각부터 72시간 내 신고 기한이 자동 계산됩니다." : "접수일부터 10일 내 처리 기한이 자동 계산됩니다."}</div>}
           <input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder={["사고", "유출", "기술유출"].includes(f.type) ? "무슨 일이 있었나요?" : "무엇이 필요한가요?"} className="w-full px-3 py-2 rounded-sm" style={{ border: `1px solid ${C.line}` }} />
           <textarea value={f.detail} onChange={(e) => setF({ ...f, detail: e.target.value })} rows={4} placeholder="대상 시스템, 기간, 사유" className="w-full px-3 py-2 rounded-sm" style={{ border: `1px solid ${C.line}` }} />
-          <Btn primary onClick={submit}>{["사고", "유출", "기술유출"].includes(f.type) ? "신고하기" : "신청하기"}</Btn>
+          <Btn primary disabled={busy} onClick={submit}>{["사고", "유출", "기술유출"].includes(f.type) ? "신고하기" : "신청하기"}</Btn>
+          {err && <p className="text-xs" style={{ color: ST.gap[1] }}>{err}</p>}
           <p className="text-xs" style={{ color: C.mute }}>Slack #security 또는 Claude에서도 같은 요청을 할 수 있습니다.</p>
         </div>
       </Card></div>
       <div className="md:col-span-3"><Card title="내 요청">
-        <ul className="divide-y text-sm" style={{ borderColor: C.line }}>{mine.map((r) => <li key={r.id} className="py-2.5"><div className="flex items-center gap-2"><Tag>{r.type}</Tag><span>{r.title}</span><Tag color={col[r.status]}>{r.status}</Tag></div><div className="text-xs mt-0.5" style={{ color: C.mute }}>{r.log[r.log.length - 1]}</div></li>)}</ul>
+        <ul className="divide-y text-sm" style={{ borderColor: C.line }}>{mine.map((r) => <li key={r.id} className="py-2.5"><div className="flex items-center gap-2"><Tag>{r.type}</Tag><span>{r.title}</span><Tag color={col[r.status]}>{r.status}</Tag></div><div className="text-xs mt-0.5" style={{ color: C.mute }}>{r.log[r.log.length - 1]}{r.due && ` · 기한 ${r.due}`}</div></li>)}{!mine.length && <li className="py-4 text-xs" style={{ color: C.mute }}>접수한 요청이 없습니다.</li>}</ul>
       </Card></div>
     </div>
   );
@@ -572,16 +607,55 @@ function ClaudePanel() {
 
 /* ─────────────── 앱 ─────────────── */
 const EMP_NAV = [["ehome", "홈"], ["policies", "정책·규칙 읽기"], ["requests", "요청·신고"], ["epia", "개인정보 현황 입력"], ["training", "내 교육·서약"]];
+const ROLE_LABEL = { employee: "임직원", security: "정보보호부문", admin: "정보보호부문 · 관리자" };
+const Splash = ({ children }) => <div className="min-h-screen flex items-center justify-center px-4" style={{ background: C.bg, color: C.ink }}>{children}</div>;
+
+function Login({ err }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <Splash>
+      <div className="bg-white w-full max-w-sm p-6" style={{ border: `1px solid ${C.line}`, borderRadius: 6 }}>
+        <h1 className="text-lg font-semibold">CCK 보안포털</h1>
+        <p className="text-sm mt-1 mb-5" style={{ color: C.mute }}>회사 Google 계정으로 로그인하세요. 다른 도메인 계정은 가입이 거부됩니다.</p>
+        <Btn primary disabled={busy} onClick={() => { setBusy(true); repo.signIn(); }}>Google 계정으로 로그인</Btn>
+        {err && <p className="text-xs mt-3" style={{ color: ST.gap[1] }}>{err}</p>}
+      </div>
+    </Splash>
+  );
+}
+
 export default function App() {
-  const [role, setRole] = useState("security");
-  const [page, setPage] = useState("overview");
+  const [me, setMe] = useState(undefined);
+  const [err, setErr] = useState("");
+  const meRef = useRef(null);
+  const start = () => repo.boot()
+    .then((u) => { meRef.current = u; setMe(u); setErr(""); if (u) audit("login", "보안포털", { how: `${ROLE_LABEL[u.role]} 접속` }); })
+    .catch((e) => { meRef.current = null; setMe(null); setErr(`로그인 정보를 불러오지 못했습니다: ${e.message}`); });
+  useEffect(() => {
+    start();
+    const sub = repo.onAuthChange((ev) => {
+      if (ev === "SIGNED_OUT") { meRef.current = null; setMe(null); }
+      else if (!meRef.current) start();
+    });
+    return () => sub?.data?.subscription?.unsubscribe();
+  }, []);
+  if (me === undefined) return <Splash><p className="text-sm" style={{ color: C.mute }}>불러오는 중…</p></Splash>;
+  if (!me) return <Login err={err} />;
+  return <Shell key={me.id} me={me} onSwitch={(id) => { setMe(undefined); repo.switchDemoUser(id).then((u) => { meRef.current = u; setMe(u); audit("login", "보안포털", { how: `${ROLE_LABEL[u.role]} 역할로 전환` }); }); }} />;
+}
+
+function Shell({ me, onSwitch }) {
+  const [viewEmp, setViewEmp] = useState(false);
+  const role = me.role === "employee" || viewEmp ? "employee" : "security";
+  const [page, setPage] = useState(role === "employee" ? "ehome" : "overview");
   const [std, setStd] = useState("ALL");
-  const [requests, setRequests] = useState(INIT_REQUESTS);
+  const [requests, setRequests] = useState([]);
+  useEffect(() => { repo.listRequests().then(setRequests).catch((e) => console.error(e)); }, [role]);
   const [, setTick] = useState(0);
   const refresh = () => setTick((t) => t + 1);
   const nav = [["overview", "현황"], ["calendar", "일정·브리프"], ["inbox", "요청함"], ["findings", "지적사항"], ["package", "심사 대응 패키지"], ["audit", "로그점검"], ["claude", "Claude"]];
   const open = requests.filter((r) => ["접수", "처리중"].includes(r.status)).length;
-  const switchRole = (r) => { setUser(r === "employee" ? "김개발" : "이정민"); audit("login", "보안포털", { how: `${r === "employee" ? "임직원" : "정보보호부문"} 역할로 접속` }); setRole(r); setPage(r === "employee" ? "ehome" : "overview"); };
+  const toggleView = () => { setViewEmp(!viewEmp); setPage(viewEmp ? "overview" : "ehome"); };
   const isEmp = role === "employee";
   const body = isEmp
     ? page === "policies" ? <EmpPolicies /> : page === "requests" ? <EmpRequests requests={requests} setRequests={setRequests} /> : page === "epia" ? <EmpPia /> : page === "training" ? <EmpTraining /> : <EmpHome requests={requests} go={setPage} />
@@ -599,7 +673,7 @@ export default function App() {
       </header>
       {menu && <div className="md:hidden fixed inset-0 z-30" style={{ background: "rgba(0,0,0,.45)", top: 56 }} onClick={() => setMenu(false)} />}
       <aside className={(menu ? "flex" : "hidden") + " md:flex fixed md:static z-40 md:z-auto left-0 w-64 md:w-52 shrink-0 flex-col text-white overflow-y-auto"} style={{ background: C.rail, top: 56, bottom: 0 }}>
-        <div className="px-5 pt-5 pb-4"><div className="text-base font-semibold tracking-tight">CCK 보안포털</div><div className="text-xs mt-0.5" style={{ color: "#8A97AB" }}>{isEmp ? "임직원" : "정보보호부문 · 관리자"}</div></div>
+        <div className="px-5 pt-5 pb-4"><div className="text-base font-semibold tracking-tight">CCK 보안포털</div><div className="text-xs mt-0.5" style={{ color: "#8A97AB" }}>{me.name} · {isEmp && me.role !== "employee" ? "임직원 화면 보기" : ROLE_LABEL[me.role]}</div></div>
         <nav className="flex-1 px-2 overflow-y-auto">
           {(isEmp ? EMP_NAV : nav).map(([k, v]) => <button key={k} onClick={() => goPage(k)} className="w-full flex items-center text-left text-sm px-3 py-2 rounded-sm mb-0.5 focus:outline-none focus:ring-2" style={{ background: page === k ? "rgba(255,255,255,.12)" : "transparent", color: page === k ? "#fff" : "#B5BFCD" }}>{v}{k === "inbox" && open > 0 && <span className="ml-auto text-xs px-1.5 rounded-sm" style={{ background: "rgba(183,121,31,.35)", color: "#F0D9A8" }}>{open}</span>}</button>)}
           {!isEmp && <>
@@ -616,11 +690,13 @@ export default function App() {
           </>}
         </nav>
         <div className="px-3 py-3 text-xs" style={{ borderTop: "1px solid rgba(255,255,255,.1)" }}>
-          <div className="mb-1.5" style={{ color: "#8A97AB" }}>프로토타입 · 사용자 전환</div>
-          <select value={role} onChange={(e) => switchRole(e.target.value)} className="w-full rounded-sm px-2 py-1.5 text-white" style={{ background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.15)" }}>
-            <option value="security" style={{ color: "#000" }}>이정민 · 정보보호부문</option>
-            <option value="employee" style={{ color: "#000" }}>김개발 · 임직원</option>
-          </select>
+          {me.role !== "employee" && <button onClick={toggleView} className="w-full text-left rounded-sm px-2 py-1.5 mb-2" style={{ color: "#B5BFCD", background: "rgba(255,255,255,.06)" }}>{isEmp ? "정보보호부문 화면으로" : "임직원 화면 보기"}</button>}
+          {repo.mode === "local" ? <>
+            <div className="mb-1.5" style={{ color: "#8A97AB" }}>데모 모드 · 사용자 전환 (DB 미연결)</div>
+            <select value={me.id} onChange={(e) => onSwitch(e.target.value)} className="w-full rounded-sm px-2 py-1.5 text-white" style={{ background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.15)" }}>
+              {repo.DEMO_USERS.map((u) => <option key={u.id} value={u.id} style={{ color: "#000" }}>{u.name} · {ROLE_LABEL[u.role]}</option>)}
+            </select>
+          </> : <button onClick={async () => { await audit("login", "보안포털", { how: "로그아웃" }); repo.signOut(); }} className="w-full text-left rounded-sm px-2 py-1.5" style={{ color: "#B5BFCD", background: "rgba(255,255,255,.06)" }}>로그아웃 ({me.email})</button>}
         </div>
       </aside>
       <main className="flex-1 min-w-0 px-4 py-4 md:px-8 md:py-6 max-w-6xl">{body}</main>

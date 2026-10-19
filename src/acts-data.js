@@ -1,6 +1,6 @@
 /* 보안 활동·기준 매핑·요구 방법·결재라인 — 데이터 정의
    App.jsx와 AuditPrep.jsx가 함께 사용한다. 실운영에서는 Supabase activities·activity_mappings로 대체. */
-import { pad } from "./common.jsx";
+const pad = (n) => String(n).padStart(2, "0");
 /* ─────────────── 영역·활동 데이터 (인증 요구 활동 기준) ─────────────── */
 export const STD = ["ISO27001", "ISO42001", "SOC2", "CSAP", "ISMSP", "PIPA", "NETLAW", "CLOUD", "AIACT", "TRADE"];
 export const STD_LABEL = { ISO27001: "27001", ISO42001: "42001", SOC2: "SOC2", CSAP: "CSAP", ISMSP: "ISMS-P", PIPA: "개인정보법", NETLAW: "정보통신망법", CLOUD: "클라우드법", AIACT: "AI기본법", TRADE: "부경법·산기법" };
