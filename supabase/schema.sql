@@ -1,4 +1,4 @@
--- CCK 보안포털 Supabase 스키마 v0.2 (활동 기반 구조)
+-- CCK 보안포털 Supabase 스키마 v0.5 (활동 기반 구조)
 create type role_t as enum ('employee','security','admin');
 create type req_type_t as enum ('account','permission','pi_register','subject_request','incident','breach','other');
 create type req_status_t as enum ('received','in_progress','done','rejected');
@@ -101,13 +101,11 @@ alter table evidences enable row level security;
 
 -- v0.3 추가: 외부 연결·일정·알림·변경이력 ---------------------------------
 alter table activities
-  add column linear_project_id text,
   add column drive_folder_id text,
   add column slack_channel_id text,
   add column cycle_month int[];          -- 연/반기 활동의 수행 월 (예: {12}, {6,12})
 alter table evidences
   add column drive_file_id text,         -- 원본은 Drive, 포털은 링크·메타만
-  add column linear_issue_id text,
   add column slack_permalink text;
 
 create type occ_status_t as enum ('planned','in_progress','done','delayed');
@@ -119,7 +117,6 @@ create table activity_occurrences (      -- 주기 활동의 회차 (12개월치
   due_on date not null,
   status occ_status_t default 'planned', -- 기한 경과+미완료는 스케줄러가 delayed로 전환
   assignee uuid references profiles(id),
-  linear_issue_id text,
   gcal_event_id text,                    -- '보안활동' 전용 캘린더 이벤트
   run_id uuid references activity_runs(id),
   done_at timestamptz,
@@ -158,7 +155,8 @@ create table threat_intel (
   expires_at timestamptz,
   applied_to text[],             -- 반영한 장비: fw / ids / edr / mail
   applied_at timestamptz,
-  unique (kind, value, received_at)
+  last_seen_at timestamptz default now(),   -- 피드에 마지막으로 나온 시각 (ctas-sync가 갱신)
+  unique (kind, value)
 );
 create table threat_alerts (     -- C-TAS 실시간 상황전파(이메일·알림톡) 수신 이력 → T05 연계
   id uuid primary key default gen_random_uuid(),
@@ -169,3 +167,41 @@ create table threat_alerts (     -- C-TAS 실시간 상황전파(이메일·알�
 -- 접근 통제: threat_intel/threat_alerts는 security·admin만 조회, 고객사·외부 API 노출 금지
 alter table threat_intel enable row level security;
 alter table threat_alerts enable row level security;
+
+-- v0.5 추가: 운영 자동화·감사 대응 -------------------------------------------
+-- 같은 회차에 같은 종류 알림을 두 번 보내지 않는다 (daily-brief)
+alter table notifications add constraint notifications_once unique (occurrence_id, kind);
+
+-- 지적사항·시정조치 추적 (U04) — 포털 '지적사항' 화면과 같은 필드
+create type finding_status_t as enum ('received','in_progress','verifying','closed');
+alter table findings
+  add column source text,                -- 외부 심사 / 내부감사 / 자체점검 / 사고 후속
+  add column standard text,              -- ISMSP / ISO27001 / CSAP ...
+  add column clause text,
+  add column owner uuid references profiles(id),
+  add column status finding_status_t default 'received',
+  add column root_cause text,
+  add column corrective_action text,
+  add column verified_by uuid references profiles(id),   -- 조치 담당자와 달라야 한다 (G08 직무 분리)
+  add column opened_on date default current_date,
+  add constraint findings_verifier_differs check (verified_by is null or owner is null or verified_by <> owner);
+
+-- 증빙 원본: Storage 버킷 'evidence' (비공개). monthly-collect가 {YYYY-MM}/{gws|github|slack}.json 저장
+insert into storage.buckets (id, name, public) values ('evidence', 'evidence', false) on conflict (id) do nothing;
+
+-- RLS 보강: 정보보호부문(security·admin)만 운영 테이블 접근, 스케줄 함수는 service key로 RLS 우회
+create or replace function is_security() returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from profiles where id = auth.uid() and role in ('security','admin'))
+$$;
+alter table findings enable row level security;
+alter table activity_occurrences enable row level security;
+alter table notifications enable row level security;
+alter table change_log enable row level security;
+create policy sec_all on findings for all using (is_security()) with check (is_security());
+create policy sec_all on activity_occurrences for all using (is_security()) with check (is_security());
+create policy sec_read on notifications for select using (is_security());
+create policy sec_read on change_log for select using (is_security());
+create policy sec_all on evidences for all using (is_security()) with check (is_security());
+create policy sec_read on threat_intel for select using (is_security());
+create policy sec_read on threat_alerts for select using (is_security());
+
