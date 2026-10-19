@@ -591,7 +591,6 @@ export default function App() {
   const title = isEmp ? (EMP_NAV.find(([k]) => k === page) || [])[1] : page === "pia" ? "개인정보 흐름도·영향평가" : (nav.find(([k]) => k === page) || [])[1] || DOMAINS.find((d) => d.code === page)?.name || "";
   return (
     <div className="min-h-screen flex flex-col md:flex-row" style={{ background: C.bg, color: C.ink, fontFamily: "Pretendard, 'Apple SD Gothic Neo', 'Noto Sans KR', system-ui, sans-serif" }}>
-      <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
       <header className="md:hidden flex items-center gap-3 px-4 py-3 text-white sticky top-0 z-30" style={{ background: C.rail }}>
         <button onClick={() => setMenu(!menu)} aria-label="메뉴" className="w-9 h-9 flex items-center justify-center rounded-sm focus:outline-none focus:ring-2" style={{ background: "rgba(255,255,255,.1)" }}>
           <span className="text-lg leading-none">{menu ? "✕" : "☰"}</span>

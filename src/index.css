@@ -1,0 +1,5 @@
+/* Tailwind·Pretendard를 빌드에 포함 — 외부 CDN 스크립트 의존 제거 */
+@import "pretendard/dist/web/static/pretendard-dynamic-subset.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
