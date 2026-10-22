@@ -11,11 +11,17 @@ export const store = {
 export const nowStr = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
 
 // 행위기반 감사로그: 누가 · 언제 · 무엇을(대상) · 어떻게(행위, 이전→이후) · 왜(사유)
-let CURRENT_USER = "이정민";
-export const setUser = (u) => { CURRENT_USER = u; };
+let CURRENT_USER = "이정민", CURRENT_ID = "이정민";
+export const setUser = (name, id = name) => { CURRENT_USER = name; CURRENT_ID = id; };
 export const getUser = () => CURRENT_USER;
+export const getUserId = () => CURRENT_ID;
+
+// DB 연결 시 repo.js가 audit_log 저장 함수를 넣는다 (작성자·시각은 서버가 채움)
+let SINK = null;
+export const setAuditSink = (fn) => { SINK = fn; };
 
 export function audit(action, target, detail = {}) {
+  if (SINK) return SINK({ action, target, how: detail.how, before: detail.before, after: detail.after, why: detail.why, note: detail.note });
   const logs = store.get("audit", []);
   logs.unshift({ id: Date.now() + Math.random().toString(36).slice(2, 6), at: nowStr(), who: CURRENT_USER, action, target, ...detail });
   store.set("audit", logs.slice(0, 5000));
@@ -28,6 +34,7 @@ export const ACTION_LABEL = {
   pia_save: "개인정보 흐름표 저장", pia_flow: "개인정보 흐름도 생성", pia_risk: "침해요인 평가",
   pia_export: "개인정보 흐름도·평가 내보내기", pia_intake: "현업 개인정보 현황 입력 제출",
   pia_import: "현업 입력 불러오기", pia_reset: "개인정보 흐름표 초기화", policy_state: "처리방침 수립 상태 변경",
+  run: "활동 수행 기록", evidence: "증빙 등록", finding: "지적사항 처리", package: "심사 대응 패키지 출력",
 };
 
 /* ─────────────── 공통 UI ─────────────── */

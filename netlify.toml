@@ -8,10 +8,13 @@
   to = "/index.html"
   status = 200
 
+[functions]
+  node_bundler = "esbuild"   # netlify/lib/ 공통 모듈을 함수마다 번들
+
 # 스케줄 함수 (KST를 UTC로 환산)
 [functions."daily-brief"]
-  schedule = "30 23 * * *"   # 매일 08:30 KST — 변경분 반영·지연 목록 Slack 발송
+  schedule = "30 23 * * *"   # 매일 08:30 KST — 회차 보충·지연 전환·기한 알림·[브리프] 등록
 [functions."monthly-collect"]
-  schedule = "0 0 1 * *"     # 매월 1일 — GWS·GitHub·Slack 권한·자산 덤프
+  schedule = "0 0 1 * *"     # 매월 1일 09:00 KST — GWS·GitHub·Slack 스냅샷 → 증빙
 [functions."ctas-sync"]
-  schedule = "0 * * * *"     # 매시간 — C-TAS 위협정보 수집 (API 회원인 경우)
+  schedule = "0 * * * *"     # 매시간 — C-TAS IOC 수집·미반영/만료 알림 (API 회원인 경우)
